@@ -78,6 +78,12 @@ function coerceSkill(id: SkillId, raw: unknown, now: number): SkillState {
     lastSeen: num(raw.lastSeen, 0),
     dueAt: num(raw.dueAt, now),
     daysCorrect: Math.max(0, Math.floor(num(raw.daysCorrect, 0))),
+    ...(typeof raw.latencyMs === "number" && Number.isFinite(raw.latencyMs)
+      ? { latencyMs: Math.max(0, raw.latencyMs) }
+      : {}),
+    ...(typeof raw.firstCorrectAt === "number" && Number.isFinite(raw.firstCorrectAt)
+      ? { firstCorrectAt: raw.firstCorrectAt }
+      : {}),
   };
 }
 

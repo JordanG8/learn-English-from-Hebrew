@@ -26,8 +26,12 @@ import {
   LAPSE_STREAK_PENALTY,
   MASTERY_MIN_ACCURACY,
   MASTERY_MIN_DISTINCT_DAYS,
+  MASTERY_MEDIAN_LATENCY_KEYBOARD_MS,
+  MASTERY_MEDIAN_LATENCY_MS,
   MASTERY_MIN_REPS,
   MASTERY_MIN_STREAK,
+  MASTERY_RETENTION_DAYS,
+  DAY_MS,
   MIXED_REVIEW_MAX_FILLER,
   MIXED_REVIEW_STEPS,
   RELEARN_INTERVAL_MS,
@@ -50,6 +54,9 @@ export interface GradeInput {
    *  recognition, not recall: it keeps the streak but does not advance the
    *  interval as far, and never counts toward a new distinct correct day. */
   hinted?: boolean;
+  /** Milliseconds from the step appearing to the answer. Optional; when
+   *  present it feeds the automaticity half of the mastery criterion. */
+  latencyMs?: number;
   now?: number;
 }
 
@@ -90,6 +97,16 @@ export function gradeSkill(prev: SkillState, input: GradeInput): SkillState {
   const newDay = prev.lastSeen === 0 || dayKey(prev.lastSeen) !== dayKey(now);
   const daysCorrect = !hinted && newDay ? prev.daysCorrect + 1 : prev.daysCorrect;
 
+  // Smoothed latency. Only unhinted answers count — a hinted answer measures
+  // how fast the child can see a highlight, not how fast they can recall.
+  const latencyMs =
+    !hinted && typeof input.latencyMs === "number" && input.latencyMs > 0
+      ? prev.latencyMs === undefined
+        ? input.latencyMs
+        : prev.latencyMs * (1 - ACCURACY_EMA_ALPHA) +
+          input.latencyMs * ACCURACY_EMA_ALPHA
+      : prev.latencyMs;
+
   return {
     ...prev,
     streak,
@@ -99,6 +116,8 @@ export function gradeSkill(prev: SkillState, input: GradeInput): SkillState {
     // A hinted success is re-shown on the current rung, not the next one.
     dueAt: now + intervalFor(hinted ? prev.streak : streak),
     daysCorrect,
+    ...(latencyMs !== undefined ? { latencyMs } : {}),
+    firstCorrectAt: prev.firstCorrectAt ?? now,
   };
 }
 
@@ -126,38 +145,81 @@ export function isIntroduced(s: SkillState): boolean {
   return s.reps > 0;
 }
 
+/** Latency ceiling for this kind of skill. Motor search is slower than
+ *  recognition, so keyboard skills get an extra second. */
+function latencyCeiling(id: SkillId): number {
+  return parseSkill(id)?.kind === "key"
+    ? MASTERY_MEDIAN_LATENCY_KEYBOARD_MS
+    : MASTERY_MEDIAN_LATENCY_MS;
+}
+
 /**
- * THE MASTERY CRITERION. All four must hold:
- *   reps          — enough evidence exists
- *   accuracy      — the evidence is good
- *   streak        — it is good right now, not just historically
- *   daysCorrect   — the evidence is spread over distinct calendar days
+ * THE MASTERY CRITERION. Six conditions, all of which must hold. The point
+ * of the conjunction is that none of them can be satisfied by clicking fast.
  *
- * The fourth is the load-bearing one: it is the only condition a child
- * cannot satisfy by clicking through lessons in a single sitting.
+ *   1. reps         — enough evidence exists at all
+ *   2. accuracy     — the evidence is good              (≥ 0.90)
+ *   3. streak       — it is good NOW, not historically
+ *   4. daysCorrect  — spread over distinct calendar days (≥ 3)
+ *   5. retention    — a correct answer at least 7 days after the first one,
+ *                     i.e. mastery is measured AFTER a delay, not at the end
+ *                     of training
+ *   6. automaticity — smoothed latency under the ceiling, because a skill
+ *                     that is accurate but slow is being reasoned out rather
+ *                     than retrieved
+ *
+ * (4) and (5) are the load-bearing ones: together they are the only
+ * conditions a child cannot satisfy in a single sitting, however long.
+ *
+ * (6) is skipped when no timing data exists, so a profile saved before
+ * latency was tracked is never permanently blocked from mastery.
  */
-export function isMastered(s: SkillState): boolean {
-  return (
+export function isMastered(s: SkillState, now: number = Date.now()): boolean {
+  const core =
     s.reps >= MASTERY_MIN_REPS &&
     s.accuracy >= MASTERY_MIN_ACCURACY &&
     s.streak >= MASTERY_MIN_STREAK &&
-    s.daysCorrect >= MASTERY_MIN_DISTINCT_DAYS
-  );
+    s.daysCorrect >= MASTERY_MIN_DISTINCT_DAYS;
+  if (!core) return false;
+
+  // (5) delayed retention check.
+  if (s.firstCorrectAt !== undefined) {
+    const span = Math.max(s.lastSeen, now) - s.firstCorrectAt;
+    if (span < MASTERY_RETENTION_DAYS * DAY_MS) return false;
+  }
+
+  // (6) automaticity, when we have timing for it.
+  if (s.latencyMs !== undefined && s.latencyMs > latencyCeiling(s.id)) return false;
+
+  return true;
 }
 
-export function isSkillMastered(p: Progress, id: SkillId): boolean {
+export function isSkillMastered(p: Progress, id: SkillId, now = Date.now()): boolean {
   const s = p.skills[id];
-  return s !== undefined && isMastered(s);
+  return s !== undefined && isMastered(s, now);
 }
 
-/** 0..1 — how close a skill is to mastery, for progress rings. Each of the
- *  four conditions contributes a quarter, so the bar always moves. */
-export function masteryFraction(s: SkillState): number {
+/** 0..1 — how close a skill is to mastery, for progress rings. Every
+ *  condition contributes an equal share, so the bar always moves even when
+ *  the child is waiting out the retention window. */
+export function masteryFraction(s: SkillState, now: number = Date.now()): number {
+  const retention =
+    s.firstCorrectAt === undefined
+      ? 0
+      : Math.min(
+          1,
+          (Math.max(s.lastSeen, now) - s.firstCorrectAt) /
+            (MASTERY_RETENTION_DAYS * DAY_MS),
+        );
+  const latency =
+    s.latencyMs === undefined ? 1 : Math.min(1, latencyCeiling(s.id) / s.latencyMs);
   const q = [
     Math.min(1, s.reps / MASTERY_MIN_REPS),
     Math.min(1, s.accuracy / MASTERY_MIN_ACCURACY),
     Math.min(1, s.streak / MASTERY_MIN_STREAK),
     Math.min(1, s.daysCorrect / MASTERY_MIN_DISTINCT_DAYS),
+    retention,
+    latency,
   ];
   return q.reduce((a, b) => a + b, 0) / q.length;
 }
@@ -306,7 +368,8 @@ export function evaluateChatGate(p: Progress, now: number = Date.now()): ChatGat
   const lettersRequired = Math.ceil(ALPHABET.length * CHAT_UNLOCK_LETTER_FRACTION);
   const lettersMastered = ALPHABET.filter(
     (l) =>
-      isSkillMastered(p, letterNameSkill(l)) && isSkillMastered(p, letterSoundSkill(l)),
+      isSkillMastered(p, letterNameSkill(l), now) &&
+      isSkillMastered(p, letterSoundSkill(l), now),
   ).length;
 
   const wordsKnown = p.knownWords.length;

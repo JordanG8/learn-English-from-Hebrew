@@ -151,6 +151,21 @@ export interface SkillState {
   dueAt: number;
   /** Distinct days on which this skill was answered correctly. */
   daysCorrect: number;
+  /**
+   * ADDED (architecture module): smoothed response latency in ms for this
+   * skill. Optional — older stored profiles will not have it, and mastery
+   * treats "no timing data" as "does not block". Automaticity, not just
+   * accuracy, is what transfers; see MASTERY_MEDIAN_LATENCY_MS.
+   */
+  latencyMs?: number;
+  /**
+   * ADDED (architecture module): epoch ms of the FIRST correct answer.
+   * Optional for the same reason. Used for the delayed retention check —
+   * mastery requires a correct answer at least MASTERY_RETENTION_DAYS after
+   * this timestamp, so mastery is measured after a delay, not at the end of
+   * training.
+   */
+  firstCorrectAt?: number;
 }
 
 export interface Progress {

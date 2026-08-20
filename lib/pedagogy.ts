@@ -6,11 +6,19 @@
  * │ magic number about intervals, mastery, budgets or rewards anywhere   │
  * │ else, that is a bug — move it here.                                  │
  * │                                                                      │
- * │ The research agent owns `docs/research.md` and finishes AFTER this   │
- * │ file was written. Values marked PROVISIONAL are defensible defaults  │
- * │ drawn from the literature summarised in each comment; retuning them  │
- * │ must remain a one-file edit. Do not change the NAMES without         │
- * │ grepping — the lesson engine reads them by name.                     │
+ * │ These values are reconciled against `docs/research.md`, which is the │
+ * │ authority. Each carries that document's CONFIDENCE TAG:              │
+ * │                                                                      │
+ * │   [conf A] strong, directly applicable evidence                      │
+ * │   [conf B] good evidence, some inference to our population           │
+ * │   [conf C] a defensible guess — the research doc says so plainly     │
+ * │                                                                      │
+ * │ docs/research.md asks explicitly that these tags are not stripped     │
+ * │ when the numbers are copied into code: "a guess that loses its label │
+ * │ becomes a fact, and then nobody re-examines it." Keep them.          │
+ * │                                                                      │
+ * │ Where this file DIVERGES from the research doc, the divergence is    │
+ * │ marked DIVERGENCE and says why. Retuning must remain a one-file edit.│
  * └──────────────────────────────────────────────────────────────────────┘
  */
 
@@ -27,36 +35,54 @@ export const DAY_MS = 24 * HOUR_MS;
 /* ------------------------------------------------------------------ */
 
 /**
- * Interval ladder indexed by `SkillState.streak` (successes in a row).
- * An expanding schedule — short first gap, then roughly ×2.2 — is the
- * standard expanding-retrieval shape (Landauer & Bjork; Cepeda et al. 2006
- * found optimal gaps scale with the retention interval).
+ * SPACING_INTERVALS_DAYS — [conf A]
  *
- * The first rung is deliberately ~10 minutes and NOT seconds: an interval
- * short enough to be answered from working memory produces no storage
- * strength. Within one session a skill re-appears via INTRA_SESSION_GAP
- * instead of via this ladder.
+ * Interval ladder indexed by `SkillState.streak` (successes in a row):
+ * same-session, then 1, 3, 7, 14, 30 days. Cepeda et al. 2008 (n > 1350):
+ * the optimal gap is ≈ 10–20% of the desired retention interval, so a
+ * 14–30 day terminal gap is right for "retained through a school year".
  *
- * PROVISIONAL — pending docs/research.md.
+ * SPACING_SHAPE = expanding, multiplier ≈ 2 — [conf B]. Note the honest
+ * caveat from docs/research.md §4: Latimier, Peyre & Ramus (2021,
+ * meta-analysis, 29 studies) found *spacing* works (g = 0.74) but found NO
+ * evidence that expanding beats uniform. Expanding is chosen because it is
+ * cheaper in total reps for the same retention, not because it is magic.
+ * Uniform spacing is a defensible fallback if this ever complicates things.
+ *
+ * The first rung is ~10 minutes and NOT seconds: an interval short enough to
+ * be answered from working memory produces no storage strength.
  */
 export const INTERVAL_LADDER_MS: readonly number[] = [
-  10 * MINUTE_MS, //  streak 0 → seen again later today
+  10 * MINUTE_MS, //  streak 0 → later in the same session
   1 * DAY_MS, //      streak 1 → tomorrow
   3 * DAY_MS, //      streak 2
   7 * DAY_MS, //      streak 3
-  16 * DAY_MS, //     streak 4
-  35 * DAY_MS, //     streak 5+
+  14 * DAY_MS, //     streak 4
+  30 * DAY_MS, //     streak 5+
 ];
 
 /** How many *other* items must come between two showings of the same skill
- *  inside one session. Interleaving beats blocking for durability
- *  (Rohrer & Taylor 2007). PROVISIONAL. */
-export const INTRA_SESSION_GAP = 3;
+ *  inside one session — the "0 (same session)" rung of the ladder above.
+ *  docs/research.md specifies ≥ 5 intervening items. [conf A] */
+export const INTRA_SESSION_GAP = 5;
 
-/** A lapse (wrong answer on a due item) drops the streak by this much
- *  rather than to zero — a 7-year-old who mis-taps once should not lose a
- *  week of work. Floor is 0. PROVISIONAL. */
-export const LAPSE_STREAK_PENALTY = 1;
+/** INTERLEAVE_MIN_DISTINCT_ITEMS — distinct items a drill block must mix.
+ *  Interleaving beats blocking for discrimination learning, and telling b
+ *  from d IS a discrimination task (Chen et al. 2025; Kang 2016). [conf A] */
+export const INTERLEAVE_MIN_DISTINCT_ITEMS = 4;
+
+/** BLOCK_ON_FIRST_INTRODUCTION — the first few exposures of a brand-new item
+ *  are blocked (all together), and only then interleaved. Children benefit
+ *  less from interleaving than adults; a short blocked run reduces early
+ *  failure. [conf B] This is why a letter lesson drills one letter and the
+ *  interleaving starts at the first mixed review. */
+export const BLOCKED_INTRODUCTION_EXPOSURES = 3;
+
+/** LAPSE_PENALTY — [conf C, explicitly a guess in docs/research.md]
+ *  A lapse drops the streak back two rungs rather than to zero. Avoids the
+ *  demoralising full reset while still forcing re-consolidation. A
+ *  7-year-old who mis-taps once should not lose a week of work. Floor is 0. */
+export const LAPSE_STREAK_PENALTY = 2;
 
 /** After a lapse the item comes back this soon, regardless of ladder. */
 export const RELEARN_INTERVAL_MS = 5 * MINUTE_MS;
@@ -68,6 +94,12 @@ export const ACCURACY_EMA_ALPHA = 0.25;
 /** Accuracy assigned to a brand-new skill before any evidence exists.
  *  Neutral-low so a skill can never look mastered on rep #1. */
 export const INITIAL_ACCURACY = 0.5;
+
+/** TARGET_IN_SESSION_ACCURACY — the difficulty the item selector aims at.
+ *  The "Eighty-Five Percent Rule": optimal training error ≈ 15%
+ *  (Wilson et al., Nature Communications, 2019). [conf B]
+ *  Below this in practice, slow the introduction rate down. */
+export const TARGET_IN_SESSION_ACCURACY = 0.85;
 
 /* ------------------------------------------------------------------ */
 /* 2. Mastery criterion                                                 */
@@ -85,12 +117,44 @@ export const INITIAL_ACCURACY = 0.5;
  *
  * PROVISIONAL — pending docs/research.md.
  */
+/** Enough evidence to judge at all. [conf C — our number, not the doc's] */
 export const MASTERY_MIN_REPS = 5;
-export const MASTERY_MIN_ACCURACY = 0.85;
+/** MASTERY_ACCURACY — [conf B] The behavioural analogue of the BKT
+ *  P(mastery) ≥ 0.95 convention standard in intelligent tutoring systems. */
+export const MASTERY_MIN_ACCURACY = 0.9;
+/** It is good NOW, not only historically. [conf C — our number] */
 export const MASTERY_MIN_STREAK = 3;
-/** Distinct calendar days with at least one correct answer. 3 days ⇒ the
- *  item survived at least two overnight consolidation windows. */
+/** MASTERY_DISTINCT_DAYS — [conf A] The load-bearing condition. Spaced-
+ *  retrieval research shows same-day performance systematically overstates
+ *  durable learning (Latimier et al. 2021, g = 0.74 spaced over massed), so
+ *  3 distinct calendar days is what separates learning from familiarity.
+ *  docs/research.md also asks for MASTERY_SESSIONS ≥ 3; we approximate
+ *  sessions by distinct days — see DIVERGENCE note below. */
 export const MASTERY_MIN_DISTINCT_DAYS = 3;
+
+/**
+ * MASTERY_MEDIAN_LATENCY_MS — [conf C, round numbers, explicitly a guess]
+ *
+ * Automaticity, not just accuracy, is what transfers: "a skill performed at
+ * 80% accuracy may seem mastered, but if it takes too long to execute, it is
+ * not fluent" (precision-teaching tradition, docs/research.md §3). We track a
+ * smoothed response latency per skill and require it to be under these.
+ *
+ * A skill with no latency data recorded yet is NOT blocked by this — the
+ * condition only ever tightens mastery for skills we have timing for.
+ */
+export const MASTERY_MEDIAN_LATENCY_MS = 2000; //     see letter → choose name/sound
+export const MASTERY_MEDIAN_LATENCY_KEYBOARD_MS = 3000; // see letter → press key
+
+/**
+ * MASTERY_RETENTION_CHECK_DAYS — [conf B]
+ *
+ * Mastery is only confirmed after a DELAYED check: the skill must still be
+ * answered correctly at least this long after it was first answered
+ * correctly. Precision teaching ("RESA") and the spacing literature both
+ * insist mastery is measured after a delay, not at the end of training.
+ */
+export const MASTERY_RETENTION_DAYS = 7;
 
 /* ------------------------------------------------------------------ */
 /* 3. Chat unlock — "the alphabet is mastered well enough to converse"  */
@@ -105,13 +169,31 @@ export const MASTERY_MIN_DISTINCT_DAYS = 3;
  *
  * PROVISIONAL — pending docs/research.md.
  */
-/** Fraction of the 26 letters whose NAME and SOUND skills are both mastered. */
-export const CHAT_UNLOCK_LETTER_FRACTION = 0.8; // ⇒ 21 of 26
-/** Words the child has actually built. Below this the AI has nothing to say. */
+/**
+ * CONVERSATION_UNLOCK_RULE — [conf B]
+ * docs/research.md: "all 26 letters at MASTERY_* plus the day-7 retention
+ * check passed", on the grounds that the gate should be automaticity-based,
+ * or children unlock chat while still decoding letter by letter.
+ *
+ * Fraction of the 26 letters whose NAME and SOUND skills are both mastered.
+ */
+export const CHAT_UNLOCK_LETTER_FRACTION = 1.0; // ⇒ all 26
+/** Words the child has actually built. Below this the AI has nothing to say.
+ *  [conf C — our number; the research doc does not set a lexicon floor for
+ *  the gate, but a conversation needs something to converse about.] */
 export const CHAT_UNLOCK_MIN_WORDS = 10;
 /** Distinct days of practice overall. Prevents a single marathon session
- *  from unlocking conversation. */
+ *  from unlocking conversation. [conf C — our number] */
 export const CHAT_UNLOCK_MIN_PRACTICE_DAYS = 4;
+
+/**
+ * NOT IMPLEMENTED — MASTERY_FLUENCY_LPM = 30 correct letters per minute
+ * across all 26, mixed case [conf C]. docs/research.md makes this part of the
+ * conversation gate. We do not run a timed 26-letter naming probe anywhere in
+ * the app, so the gate currently rests on per-skill latency instead. Adding
+ * it means adding a timed probe lesson; see docs/architecture.md → Gaps.
+ */
+export const MASTERY_FLUENCY_LPM = 30;
 
 /* ------------------------------------------------------------------ */
 /* 4. Session shape                                                     */
@@ -121,11 +203,31 @@ export const CHAT_UNLOCK_MIN_PRACTICE_DAYS = 4;
  *  premise is that a letter is spent immediately, not queued. */
 export const NEW_LETTERS_PER_LESSON = 1;
 
+/** NEW_LETTERS_PER_SESSION — [conf C, a deliberate acceleration, not a
+ *  literature value]. Classroom phonics norms are ~1 letter per WEEK for
+ *  beginning L1 readers; our learners are older and already literate in
+ *  Hebrew. Watch for accuracy dropping below TARGET_IN_SESSION_ACCURACY —
+ *  that is the signal to slow down. Hard max 3. */
+export const NEW_LETTERS_PER_SESSION = 2;
+export const NEW_LETTERS_PER_SESSION_MAX = 3;
+
+/** SESSION_LENGTH — [conf B] Sustained attention estimates cluster at ~2–3
+ *  minutes per year of age. docs/research.md flags that this heuristic could
+ *  not be traced to a primary experimental source. */
+export const SESSION_LENGTH_MIN_YOUNGER = 10; // ages 7–9
+export const SESSION_LENGTH_MIN_OLDER = 15; //   ages 10–12
+export const SESSION_LENGTH_MAX = 20; //         hard stop
+
+/** TRIALS_PER_SESSION — [conf C, not evidence-derived] ~2–4s per trial with
+ *  feedback across a 10–15 minute session. A *session* is several lessons;
+ *  MIXED_REVIEW_STEPS below is the size of ONE lesson. */
+export const TRIALS_PER_SESSION = 24;
+
 /** New words a keyboard lesson may introduce. */
 export const NEW_WORDS_PER_KEYBOARD_LESSON = 1;
 
-/** Steps in a mixed-review lesson. ~8 keeps a session under the ~5 minutes
- *  a 7-year-old sustains without a break. PROVISIONAL. */
+/** Steps in one mixed-review lesson. ~8 is roughly a third of
+ *  TRIALS_PER_SESSION, so three lessons make a session. [conf C] */
 export const MIXED_REVIEW_STEPS = 8;
 
 /** Of those, how many may be *not* currently due (filler when the due queue
@@ -133,7 +235,7 @@ export const MIXED_REVIEW_STEPS = 8;
 export const MIXED_REVIEW_MAX_FILLER = 3;
 
 /** How many lessons of other kinds before a mixed review is inserted.
- *  Interleaving cadence. PROVISIONAL. */
+ *  Interleaving cadence. [conf C] */
 export const MIXED_REVIEW_EVERY_N_LESSONS = 3;
 
 /** Wrong answers on one step before the app shows the answer and moves on.
@@ -172,21 +274,35 @@ export const STARS_2_MAX_WRONG = 3;
  *  bar teaches risk-aversion. */
 export const STARS_3_MAX_WRONG = 1;
 
-/** Probability that a *bonus* surprise celebration plays on top of the
- *  normal one. Unexpected reward — the variety that does not crowd out
- *  intrinsic motivation. PROVISIONAL. */
+/** REWARD_SCHEDULE — informational feedback on EVERY trial, celebratory
+ *  reward on a variable ratio averaging 1-in-5.
+ *  [conf A for the contingency principle / conf C for the "1 in 5"]
+ *  Tangible, expected, performance-contingent rewards undermine intrinsic
+ *  motivation (d ≈ −0.28 to −0.40; Deci, Koestner & Ryan 1999). Unpredictable
+ *  rewards are the least corrosive category, hence a variable ratio. */
 export const SURPRISE_CELEBRATION_CHANCE = 0.2;
+
+/** LEADERBOARDS — [conf B] Permanently false. Social comparison is the
+ *  fastest route from mastery goals to performance-avoidance goals for
+ *  exactly the children who most need to stay engaged. There is no code
+ *  behind this flag; it exists so the decision is recorded and searchable. */
+export const LEADERBOARDS = false;
 
 /** Confetti pieces. Keep low enough for a cheap phone to hold 60fps. */
 export const CONFETTI_PIECES = 60;
 export const CELEBRATION_MS = 2600;
 
 /**
- * FALSE on purpose. A day-streak counter that resets to zero is punitive
- * framing for a 7-year-old and converts a missed day into a reason to quit.
- * We count *total days practised*, which only ever goes up. If a future
- * product decision reintroduces a resettable streak, flip this and handle
- * it in exactly one place.
+ * STREAK_RESET_ON_MISS = false. [conf C — docs/research.md notes all streak
+ * evidence it found was industry blog data, not peer-reviewed.]
+ *
+ * DIVERGENCE from docs/research.md: the doc suggests keeping a streak and
+ * decaying it by 1 per missed day, plus 2 "freezes" per month. We show
+ * *total days practised* instead, which only ever goes up. Reasoning: a
+ * decaying number is still a number a 7-year-old watches go down, and the
+ * freeze mechanic is a second thing to explain on a screen whose whole brief
+ * is "impossible to misread". If a future product decision reintroduces a
+ * lossy streak, flip this flag — lib/reward.ts has the one branch.
  */
 export const STREAK_IS_LOSSY = false;
 
@@ -198,17 +314,40 @@ export const ENCOURAGEMENT_ON_WRONG = true;
 /* 6. Conversation mode (progressive overload)                          */
 /* ------------------------------------------------------------------ */
 
-/** New (unmastered) English words the AI may introduce per turn. i+1 style
- *  comprehensible input (Krashen): enough to grow, little enough to parse.
- *  PROVISIONAL. */
-export const CHAT_NEW_WORDS_PER_TURN = 2;
+/**
+ * NEW_WORD_BUDGET_INITIAL — [conf B]
+ *
+ * NOT Krashen's "i+1": docs/research.md §7 is blunt that i+1 was never
+ * operationalised and there is nothing to implement. The evidenced successor
+ * is LEXICAL COVERAGE. Hu & Nation (2000) put unassisted comprehension at
+ * 98% known tokens; at a 20–40 token turn that is 0–1 unknown words.
+ */
+export const CHAT_NEW_WORDS_PER_TURN = 1;
 
-/** Hard ceiling accepted by the API route, regardless of what the client
- *  asks for. Client input is untrusted. */
-export const CHAT_NEW_WORDS_MAX = 4;
+/** NEW_WORD_BUDGET_MAX — [conf B] ≈ 95% coverage at a 40–60 token turn, the
+ *  *minimal* comprehension threshold (Laufer & Ravenhorst-Kalovski 2010).
+ *  Do not exceed. Also the hard ceiling the API route clamps to, because
+ *  client input is untrusted. */
+export const CHAT_NEW_WORDS_MAX = 3;
+
+/** UNKNOWN_TOKEN_RATIO_MAX — [conf A] The same thresholds expressed
+ *  proportionally: target 2% unknown tokens, never above 5%. Applied as a
+ *  SECOND constraint alongside the count — whichever binds first wins, so a
+ *  15-token turn gets zero new words rather than one. */
+export const CHAT_UNKNOWN_TOKEN_RATIO_MAX = 0.05;
+export const CHAT_UNKNOWN_TOKEN_RATIO_TARGET = 0.02;
+
+/**
+ * [conf A] Repetition matters more than the budget: practitioner guidance
+ * converges on 8–10 meaningful encounters per item. So a word the AI
+ * introduces in chat is pushed into the SRS queue and the system prompt is
+ * told to re-use recently introduced words. docs/research.md calls this a
+ * bigger lever than tuning the budget number.
+ */
+export const CHAT_REUSE_RECENT_WORDS = true;
 
 /** Maximum English words in one AI turn. Short turns keep a beginner
- *  reading rather than skimming. */
+ *  reading rather than skimming. [conf C — our number] */
 export const CHAT_MAX_ENGLISH_WORDS_PER_TURN = 12;
 
 /** Conversation history sent upstream (turns, not messages). */
@@ -236,3 +375,28 @@ export const RETURNING_COOKIE_MAX_AGE_S = 180 * 24 * 60 * 60;
  *  so a child cannot dismiss it by reflex-tapping where the last button
  *  was. Adults will wait 1.2s; reflex taps happen inside ~400ms. */
 export const TUTORIAL_SKIP_REVEAL_DELAY_MS = 1200;
+
+/* ------------------------------------------------------------------ */
+/* 8. Recorded decisions with no code behind them yet                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * HANDWRITING_STEP_REQUIRED — [conf A that handwriting beats typing for
+ * letter recognition (Longcamp et al. 2005; James & Engelhardt 2012;
+ * Ibaibarriaga et al. 2025) / conf C that ON-SCREEN tracing preserves the
+ * benefit — James & Engelhardt found tracing produced no reading-network
+ * recruitment, which is the mechanism we could actually implement].
+ *
+ * NOT IMPLEMENTED. There is no trace-and-write step in the letter lesson.
+ * This is the largest known divergence from docs/research.md; see
+ * docs/architecture.md → Gaps. The honest mitigation the research doc itself
+ * recommends is to tell the teacher that five minutes of paper letter-writing
+ * alongside the app is likely worth more than any on-screen substitute.
+ */
+export const HANDWRITING_STEP_REQUIRED = true;
+
+/** TOUCH_TYPING_HOME_ROW_MIN_AGE — [conf B] Below 9, hunt-and-peck is fine
+ *  and formal technique instruction is not worth the supervision cost. The
+ *  app therefore teaches WHERE keys are, not finger discipline; finger colour
+ *  coding is available but never required. */
+export const TOUCH_TYPING_HOME_ROW_MIN_AGE = 9;

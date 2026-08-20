@@ -19,6 +19,7 @@
 import {
   CHAT_MAX_ENGLISH_WORDS_PER_TURN,
   CHAT_NEW_WORDS_PER_TURN,
+  CHAT_UNKNOWN_TOKEN_RATIO_MAX,
 } from "./pedagogy";
 import { ALPHABET } from "./skills";
 import { WORDS } from "./curriculum/words";
@@ -70,9 +71,21 @@ export interface LexiconCheck {
   ok: boolean;
   englishCount: number;
   novel: string[];
+  /** Which constraint failed, for the retry prompt. */
+  reason: "ok" | "too-many-new" | "ratio" | "too-much-english";
 }
 
-/** Post-hoc validation of a model turn. */
+/** Total tokens in a turn, Hebrew and English alike — the denominator for
+ *  the coverage ratio. */
+function totalTokens(text: string): number {
+  return (text.match(/[\p{L}\p{N}]+/gu) ?? []).length;
+}
+
+/**
+ * Post-hoc validation of a model turn. TWO constraints, whichever binds
+ * first (docs/research.md §7): the absolute count of unknown words, and the
+ * proportion of unknown tokens. A 15-token turn gets zero new words, not one.
+ */
 export function checkReply(
   text: string,
   lexicon: readonly string[],
@@ -81,11 +94,19 @@ export function checkReply(
   const allowed = allowedWordSet(lexicon);
   const words = englishWords(text);
   const novel = [...new Set(words.filter((w) => !allowed.has(w)))];
-  return {
-    ok: novel.length <= budget && words.length <= CHAT_MAX_ENGLISH_WORDS_PER_TURN * 2,
-    englishCount: words.length,
-    novel,
-  };
+  const tokens = Math.max(1, totalTokens(text));
+  const ratio = novel.length / tokens;
+
+  const reason: LexiconCheck["reason"] =
+    novel.length > budget
+      ? "too-many-new"
+      : ratio > CHAT_UNKNOWN_TOKEN_RATIO_MAX
+        ? "ratio"
+        : words.length > CHAT_MAX_ENGLISH_WORDS_PER_TURN * 2
+          ? "too-much-english"
+          : "ok";
+
+  return { ok: reason === "ok", englishCount: words.length, novel, reason };
 }
 
 /**
@@ -119,6 +140,11 @@ export function systemPrompt(opts: {
     `- You may introduce AT MOST ${budget} English word(s) that are not on that`,
     "  list, in this whole turn. When you introduce one, immediately give its",
     "  Hebrew meaning in parentheses, like: DOG (כלב).",
+    "- If your turn is short (under about 20 words in total), introduce NO new",
+    "  word at all. New words are only affordable in a longer turn.",
+    "- RE-USE a word you introduced in an earlier turn instead of introducing",
+    "  another one. A word needs many encounters to stick; that matters more",
+    "  than meeting new words.",
     "- Never use an English word outside the list without doing that.",
     "- Never write a long English sentence. Never write an English paragraph.",
     "- If you have nothing to say inside these limits, say something short and",

@@ -80,6 +80,9 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
   const [wrongTotal, setWrongTotal] = useState(0);
   const [celebrating, setCelebrating] = useState(false);
   const settled = useRef(false);
+  // When the current step appeared. Latency is half of the mastery
+  // criterion (automaticity) — see MASTERY_MEDIAN_LATENCY_MS.
+  const shownAt = useRef<number>(Date.now());
 
   const step = steps[index];
   const forceHint = attemptsHere >= HINT_RESCUE_AFTER_WRONG;
@@ -89,6 +92,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
     setAttemptsHere(0);
     setIndex((i) => i + 1);
     setPhase("playing");
+    shownAt.current = Date.now();
   }, []);
 
   /* --- Grading ----------------------------------------------------- */
@@ -97,8 +101,11 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
       if (!step || phase !== "playing") return;
       const skills = skillsForStep(step);
       const hinted = forceHint || attemptsHere > 0;
+      // Only the FIRST attempt on a step is a fair latency sample; later ones
+      // include the time spent reading the "try again" nudge.
+      const latencyMs = attemptsHere === 0 ? Date.now() - shownAt.current : undefined;
 
-      skills.forEach((s) => attempt(s, { correct, hinted }));
+      skills.forEach((s) => attempt(s, { correct, hinted, latencyMs }));
 
       if (correct) {
         setMessage(praise(index * 7 + attemptsHere));
@@ -166,6 +173,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
     setAttemptsHere(0);
     setMessage(null);
     setPhase("playing");
+    shownAt.current = Date.now();
   }, []);
 
   const goNext = useCallback(() => {

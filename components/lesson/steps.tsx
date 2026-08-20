@@ -25,7 +25,6 @@ import type {
   TutorialStep,
 } from "@/lib/types";
 import { KeyboardSurface } from "@/lib/keyboard-adapter";
-import { LanguageSwitch } from "@/components/keyboard/LanguageSwitch";
 import { getLetter } from "@/lib/curriculum";
 import { playSfx, say, speakEn } from "@/lib/audio";
 import { BigButton, Card } from "@/components/ui/kit";
@@ -245,12 +244,10 @@ export function PressKeyView({
   locked,
 }: StepRenderProps & { step: PressKeyStep }) {
   const [lang, setLang] = useState<Lang>(step.lang);
-  const [wrong, setWrong] = useState<string[]>([]);
   const [solved, setSolved] = useState(false);
   const hint = step.hint || forceHint;
 
   useEffect(() => {
-    setWrong([]);
     setSolved(false);
     setLang(step.lang);
   }, [step.id, step.lang]);
@@ -258,13 +255,16 @@ export function PressKeyView({
   const langOk = lang === step.lang;
 
   const handleKey = useCallback(
-    (code: string) => {
+    (code: string, _char: string | null, activeLang: Lang) => {
       if (locked || solved) return;
-      // Pressing the right key in the wrong layout is not a wrong answer —
-      // it is the language-switch lesson asking to be learned. Say so.
-      if (!langOk) {
+      // Compare against the layout that was ACTIVE at press time, not React
+      // state — a physical Alt+Shift can land in the same tick as the keypress.
+      //
+      // Pressing the right key in the wrong layout is NOT a wrong answer. It
+      // is the language-switch lesson asking to be learned, so we say so and
+      // do not grade it.
+      if (activeLang !== step.lang) {
         playSfx("wrong");
-        setWrong((w) => (w.includes(code) ? w : [...w, code]));
         return;
       }
       if (code === step.code) {
@@ -273,11 +273,10 @@ export function PressKeyView({
         onAnswer(true);
       } else {
         playSfx("wrong");
-        setWrong((w) => (w.includes(code) ? w : [...w, code]));
         onAnswer(false);
       }
     },
-    [locked, solved, langOk, step.code, onAnswer],
+    [locked, solved, step.code, step.lang, onAnswer],
   );
 
   return (
@@ -299,20 +298,16 @@ export function PressKeyView({
         ) : null}
       </Card>
 
-      <div className="flex justify-center" {...tourAttr("lang-switch")}>
-        <LanguageSwitch
-          lang={lang}
-          onLangChange={(next) => setLang(next)}
-          requiredLang={step.lang}
-          size="sm"
-        />
-      </div>
-
       <div {...tourAttr("keyboard")}>
         <KeyboardSurface
           lang={lang}
+          onLangChange={setLang}
+          requiredLang={step.lang}
+          // Hint on ⇒ the key is spotlighted (recognition).
+          // Hint off ⇒ legends are still printed, but nothing is marked, so
+          // the child has to recall where the key lives.
           highlight={hint && langOk ? [step.code] : []}
-          wrong={wrong}
+          reveal
           disabled={locked || solved}
           onKey={handleKey}
         />
@@ -334,13 +329,13 @@ export function BuildWordView({
 }: StepRenderProps & { step: BuildWordStep }) {
   const letters = useMemo(() => step.word.split(""), [step.word]);
   const [filled, setFilled] = useState(0);
-  const [wrong, setWrong] = useState<string[]>([]);
+  const [missHere, setMissHere] = useState(0);
   const [done, setDone] = useState(false);
   const doneRef = useRef(false);
 
   useEffect(() => {
     setFilled(0);
-    setWrong([]);
+    setMissHere(0);
     setDone(false);
     doneRef.current = false;
   }, [step.id]);
@@ -350,11 +345,15 @@ export function BuildWordView({
   const targetData = target ? getLetter(target) : undefined;
 
   const handleKey = useCallback(
-    (code: string) => {
+    (code: string, _char: string | null, activeLang: Lang) => {
       if (locked || doneRef.current || !targetCode) return;
+      if (activeLang !== "en") {
+        playSfx("wrong");
+        return;
+      }
       if (code === targetCode) {
         playSfx("letter-lands");
-        setWrong([]);
+        setMissHere(0);
         onAnswer(true);
         setFilled((f) => {
           const next = f + 1;
@@ -368,7 +367,7 @@ export function BuildWordView({
         });
       } else {
         playSfx("wrong");
-        setWrong((w) => (w.includes(code) ? w : [...w, code]));
+        setMissHere((n) => n + 1);
         onAnswer(false);
       }
     },
@@ -420,6 +419,12 @@ export function BuildWordView({
             ) : null}
           </p>
         ) : null}
+        {missHere > 0 || forceHint ? (
+          <p className="text-center text-lg font-bold text-brand">
+            <span aria-hidden>👀 </span>
+            המקש המסומן — זה הוא
+          </p>
+        ) : null}
         <button
           type="button"
           onClick={() => speakEn(targetData?.nameEn ?? step.word, 0.7)}
@@ -433,8 +438,14 @@ export function BuildWordView({
       <div {...tourAttr("keyboard")}>
         <KeyboardSurface
           lang="en"
-          highlight={forceHint || wrong.length > 0 ? (targetCode ? [targetCode] : []) : []}
-          wrong={wrong}
+          requiredLang="en"
+          // The target key is always spotlighted in a word build: this step
+          // teaches "where does this letter live", it does not test recall.
+          // It is also what makes the keyboard usable on a phone, where the
+          // board degrades to focus tiles built from `highlight`.
+          highlight={targetCode ? [targetCode] : []}
+          reveal
+          showFingers
           disabled={locked}
           onKey={handleKey}
         />

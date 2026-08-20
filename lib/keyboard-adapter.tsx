@@ -2,188 +2,88 @@
 
 /**
  * KEYBOARD ADAPTER — the single seam between lesson code and the keyboard
- * components owned by the keyboard agent (`components/keyboard/*`,
- * `lib/keyboard-layout.ts`).
+ * components owned by the keyboard agent (`components/keyboard/*`).
  *
- * WHY THIS EXISTS: lesson UI was written concurrently with the keyboard
- * components. Everything outside this file imports `KeyboardSurface` from
- * here and never reaches into components/keyboard directly, so when the real
- * `VirtualKeyboard` lands, wiring it up is a change to ONE file — see
- * `renderKeyboard` at the bottom.
+ * Everything outside this file imports `KeyboardSurface` from here and never
+ * reaches into `components/keyboard` directly. The adapter exists because the
+ * lesson UI and the keyboard were built concurrently: it translates the
+ * lesson layer's vocabulary (a `PressKeyStep` wants "this key, in this
+ * layout, with or without a hint") into whatever the keyboard's props happen
+ * to be, so a change on either side is a change to ONE file.
  *
- * The fallback rendered below is not a stub: it is a working on-screen
- * keyboard driven by the real `lib/keyboard-layout.ts` data, sized for
- * fingers, with finger colouring and home-row anchors. If the richer
- * component never arrives, the app still teaches the keyboard correctly.
+ * Two mappings worth knowing:
+ *   · `hint` → `reveal`. Hint on means the legends are printed (recognition);
+ *     hint off means blank caps (recall). This is the scaffold dial, and it is
+ *     the SRS that turns it down — see LessonPlayer.
+ *   · `highlight` must never be empty on a press-key step: on a phone the
+ *     keyboard degrades to focus tiles built FROM the highlight, so an empty
+ *     highlight makes it unusable on the device most children will hold.
  */
 
-import { useCallback, useEffect, useMemo } from "react";
-import type { KeyCap, KeyCode, Lang } from "./types";
-import {
-  FINGER_COLORS,
-  FINGER_INK,
-  KEY_ROWS,
-  charFor,
-  hasGlyph,
-} from "./keyboard-layout";
-import { playSfx } from "./audio";
+import { useCallback } from "react";
+import type { KeyCode, Lang } from "./types";
+import { VirtualKeyboard, type KeyEventMeta } from "@/components/keyboard";
+import { charFor } from "./keyboard-layout";
 
 export interface KeyboardSurfaceProps {
-  /** Which layout's glyphs are printed on the keys. */
+  /** Controlled layout — which language's glyphs are emphasised. */
   lang: Lang;
-  /** Key codes to draw attention to. Empty = recall mode, no hints. */
+  /** The child performs the switch; we only observe it. */
+  onLangChange?: (lang: Lang) => void;
+  /** The layout this step needs. A mismatch makes the switch demand Alt+Shift. */
+  requiredLang?: Lang | null;
+  /** Keys to light up. Also drives phone focus-tile mode — keep it non-empty. */
   highlight?: readonly KeyCode[];
-  /** Keys the child got wrong just now — shown as a gentle wobble. */
-  wrong?: readonly KeyCode[];
-  /** Fired for every key activated, by touch or by a real keyboard. */
-  onKey: (code: KeyCode, char: string | null) => void;
-  /** Suspend input, e.g. during a celebration. */
+  /** True = legends printed (recognition). False = blank caps (recall). */
+  reveal?: boolean;
+  /** Finger colour coding, for typing-technique lessons. */
+  showFingers?: boolean;
+  /** The keyboard renders its own LanguageSwitch unless this is false. */
+  showLanguageSwitch?: boolean;
+  /**
+   * Every key activation, by touch or by real hardware.
+   * `lang` is the layout that was ACTIVE at press time — compare against the
+   * step's required layout rather than tracking it separately, or a physical
+   * Alt+Shift can race the React state.
+   */
+  onKey: (code: KeyCode, char: string | null, lang: Lang) => void;
   disabled?: boolean;
-  /** Colour keys by which finger should press them. */
-  fingerColors?: boolean;
-  /** Also listen to the physical keyboard. Default true. */
-  physical?: boolean;
   className?: string;
 }
 
-/* ------------------------------------------------------------------ */
-/* Physical keyboard                                                    */
-/* ------------------------------------------------------------------ */
-
-/**
- * Listen to a real keyboard. Uses `event.code`, not `event.key`, so a child
- * typing with the Hebrew layout active still produces "KeyA" for the A key —
- * which is exactly the skill we track. Modifier chords are ignored here;
- * Alt+Shift is handled by the keyboard agent's `useAltShift`.
- */
-export function usePhysicalKeys(
-  onKey: (code: KeyCode) => void,
-  enabled = true,
-): void {
-  useEffect(() => {
-    if (!enabled) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.repeat) return;
-      onKey(e.code);
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onKey, enabled]);
-}
-
-/* ------------------------------------------------------------------ */
-/* Fallback surface                                                     */
-/* ------------------------------------------------------------------ */
-
-function KeyButton({
-  cap,
+export function KeyboardSurface({
   lang,
-  highlighted,
-  wrong,
-  disabled,
-  fingerColors,
+  onLangChange,
+  requiredLang = null,
+  highlight = [],
+  reveal = true,
+  showFingers = false,
+  showLanguageSwitch = true,
   onKey,
-}: {
-  cap: KeyCap;
-  lang: Lang;
-  highlighted: boolean;
-  wrong: boolean;
-  disabled: boolean;
-  fingerColors: boolean;
-  onKey: (code: KeyCode, char: string | null) => void;
-}) {
-  const glyph = charFor(cap.code, lang, true) ?? charFor(cap.code, lang, false);
-  const dead = !hasGlyph(cap, lang) && cap.row !== 4;
-  const label = glyph ?? "";
-
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      aria-label={label || cap.code}
-      aria-pressed={highlighted}
-      onPointerDown={() => {
-        if (disabled) return;
-        playSfx("tap");
-        onKey(cap.code, charFor(cap.code, lang, false));
-      }}
-      className="efh-kb-key ltr"
-      data-highlight={highlighted ? "1" : undefined}
-      data-wrong={wrong ? "1" : undefined}
-      data-anchor={cap.homeAnchor ? "1" : undefined}
-      style={{
-        flexGrow: cap.width ?? 1,
-        flexBasis: 0,
-        background:
-          fingerColors && !dead ? FINGER_COLORS[cap.finger] : "var(--color-card)",
-        color: fingerColors && !dead ? FINGER_INK[cap.finger] : "var(--color-ink)",
-        opacity: dead ? 0.45 : 1,
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function FallbackKeyboard(props: KeyboardSurfaceProps) {
-  const {
-    lang,
-    highlight = [],
-    wrong = [],
-    onKey,
-    disabled = false,
-    fingerColors = true,
-    className = "",
-  } = props;
-
-  const hi = useMemo(() => new Set(highlight), [highlight]);
-  const bad = useMemo(() => new Set(wrong), [wrong]);
-
-  return (
-    <div className={`efh-kb-surface ltr ${className}`} role="group" aria-label="מקלדת">
-      {KEY_ROWS.map((row, i) => (
-        <div className="efh-kb-row" key={i}>
-          {row.map((cap) => (
-            <KeyButton
-              key={cap.code}
-              cap={cap}
-              lang={lang}
-              highlighted={hi.has(cap.code)}
-              wrong={bad.has(cap.code)}
-              disabled={disabled}
-              fingerColors={fingerColors}
-              onKey={onKey}
-            />
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* The seam                                                             */
-/* ------------------------------------------------------------------ */
-
-/**
- * ▼▼▼ THE ONE PLACE TO CHANGE when components/keyboard/VirtualKeyboard.tsx
- * lands. Import it, map these props onto its props, and return it. Nothing
- * else in the app needs to move. ▼▼▼
- */
-export function KeyboardSurface(props: KeyboardSurfaceProps) {
-  const { onKey, disabled = false, physical = true } = props;
-
-  const handlePhysical = useCallback(
-    (code: KeyCode) => {
-      if (disabled) return;
-      onKey(code, null);
+  disabled = false,
+  className,
+}: KeyboardSurfaceProps) {
+  const handleKey = useCallback(
+    (code: KeyCode, char: string | null, meta: KeyEventMeta) => {
+      onKey(code, char, meta.lang);
     },
-    [onKey, disabled],
+    [onKey],
   );
-  usePhysicalKeys(handlePhysical, physical);
 
-  return <FallbackKeyboard {...props} />;
+  return (
+    <VirtualKeyboard
+      lang={lang}
+      onLangChange={onLangChange ? (next) => onLangChange(next) : undefined}
+      requiredLang={requiredLang}
+      highlight={[...highlight]}
+      reveal={reveal}
+      showFingers={showFingers}
+      showLanguageSwitch={showLanguageSwitch}
+      onKey={handleKey}
+      disabled={disabled}
+      className={className}
+    />
+  );
 }
 
 export { charFor };

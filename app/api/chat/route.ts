@@ -132,7 +132,13 @@ export async function POST(req: Request): Promise<NextResponse<ChatOk | ChatDegr
 
     // (6) One stricter retry before giving up on the model's own judgement.
     if (!check.ok) {
-      const stricter = `${baseSystem}\n\nYOUR PREVIOUS ATTEMPT BROKE THE LEXICON RULE by using: ${check.novel.join(", ")}. Rewrite it. Use ONLY Hebrew plus words from the allowed list.`;
+      const why =
+        check.reason === "ratio"
+          ? "the turn was too short to afford any new English word"
+          : check.reason === "too-much-english"
+            ? "there was far too much English in it"
+            : `it used English words outside the allowed list: ${check.novel.join(", ")}`;
+      const stricter = `${baseSystem}\n\nYOUR PREVIOUS ATTEMPT BROKE THE LEXICON RULE — ${why}. Rewrite it. Use ONLY Hebrew plus words from the allowed list, and introduce no new English word at all this time.`;
       text = await ask(stricter);
       check = checkReply(text, lexicon, budget);
     }

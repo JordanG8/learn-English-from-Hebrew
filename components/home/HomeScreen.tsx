@@ -35,7 +35,7 @@ const KIND_ICON: Record<string, string> = {
 
 export function HomeScreen() {
   const router = useRouter();
-  const { progress, ready, setOnboarded } = useProgress();
+  const { progress, ready, setOnboarded, completeLesson } = useProgress();
   const visitor = useVisitor();
   const [replay, setReplay] = useState(false);
 
@@ -55,10 +55,27 @@ export function HomeScreen() {
     router.push(`/lesson/${next.id}`);
   }, [next, router]);
 
+  /**
+   * Finishing (or skipping) the walkthrough also completes the `tutorial`
+   * LESSON, because the first letter lesson lists it in `requires`. The
+   * walkthrough overlay and that lesson are the same content in two
+   * presentations; a child must never have to sit through both.
+   */
   const finishTutorial = useCallback(() => {
     setOnboarded(true);
+    completeLesson(TUTORIAL_LESSON.id, 3);
     setReplay(false);
-  }, [setOnboarded]);
+  }, [setOnboarded, completeLesson]);
+
+  const skipTutorial = useCallback(() => {
+    setReplay(false);
+    // Skipping still unblocks the track...
+    completeLesson(TUTORIAL_LESSON.id, 1);
+    // ...but only a high-confidence returner is marked as onboarded. A merely
+    // *probable* returner is offered the walkthrough again next visit, because
+    // the detection is allowed to be wrong. See lib/visitor.ts.
+    if (visitor.confidence >= 0.8) setOnboarded(true);
+  }, [completeLesson, setOnboarded, visitor.confidence]);
 
   // Render nothing state-dependent until localStorage has been read, or a
   // returning child sees "0 stars" flash before their real progress arrives.
@@ -184,13 +201,7 @@ export function HomeScreen() {
         <Walkthrough
           lesson={TUTORIAL_LESSON}
           onFinish={finishTutorial}
-          // Skipping does NOT mark the child as onboarded when they are only
-          // *probably* returning — so the walkthrough is still offered next
-          // time, and the escape hatch above still works.
-          onSkip={() => {
-            setReplay(false);
-            if (visitor.confidence >= 0.8) setOnboarded(true);
-          }}
+          onSkip={skipTutorial}
         />
       ) : null}
     </>
