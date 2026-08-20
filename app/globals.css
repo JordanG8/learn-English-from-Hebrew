@@ -27,8 +27,10 @@
   --color-stop: oklch(0.62 0.2 25);
 
   --radius-kid: 1.5rem;
-  --font-hebrew: "Rubik", "Assistant", system-ui, sans-serif;
-  --font-latin: "Lexend", "Verdana", system-ui, sans-serif;
+  /* Loaded via next/font/google in app/layout.tsx (self-hosted, no runtime
+     fetch to fonts.googleapis.com). --font-assistant is set on <html>. */
+  --font-hebrew: var(--font-assistant), "Assistant", system-ui, sans-serif;
+  --font-latin: var(--font-assistant), "Assistant", system-ui, sans-serif;
 }
 
 :root { color-scheme: light; }
@@ -176,6 +178,13 @@ html, body {
   position: fixed;
   z-index: 72;
   max-width: min(92vw, 34rem);
+  /* Card can never exceed the viewport: on a short screen (landscape phone,
+     or a software keyboard open) it scrolls internally instead of getting
+     cut off below the fold with no way to reach the button. */
+  max-height: min(80dvh, 32rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   border-radius: var(--radius-kid);
   background: var(--color-card);
   padding: 1.25rem;

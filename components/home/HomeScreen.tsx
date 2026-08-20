@@ -38,6 +38,7 @@ export function HomeScreen() {
   const { progress, ready, setOnboarded, completeLesson } = useProgress();
   const visitor = useVisitor();
   const [replay, setReplay] = useState(false);
+  const [showFullMap, setShowFullMap] = useState(false);
 
   const gate = useMemo(() => evaluateChatGate(progress), [progress]);
   const next = useMemo(() => nextLesson(progress, LESSONS), [progress]);
@@ -50,32 +51,32 @@ export function HomeScreen() {
     [],
   );
 
+  // A window around "where am I": the last couple of finished lessons, the
+  // current one, and a short look-ahead. Full 100-item list is opt-in.
+  const visibleTrack = useMemo(() => {
+    if (showFullMap) return track;
+    const idx = next ? track.findIndex((l) => l.id === next.id) : track.length - 1;
+    const from = Math.max(0, idx - 2);
+    const to = Math.min(track.length, idx + 4);
+    return track.slice(from, to);
+  }, [track, next, showFullMap]);
+
   const goNext = useCallback(() => {
     if (!next) return;
     router.push(`/lesson/${next.id}`);
   }, [next, router]);
 
   /**
-   * Finishing (or skipping) the walkthrough also completes the `tutorial`
-   * LESSON, because the first letter lesson lists it in `requires`. The
-   * walkthrough overlay and that lesson are the same content in two
-   * presentations; a child must never have to sit through both.
+   * Finishing the walkthrough also completes the `tutorial` LESSON, because
+   * the first letter lesson lists it in `requires`. The walkthrough overlay
+   * and that lesson are the same content in two presentations; a child must
+   * never have to sit through both.
    */
   const finishTutorial = useCallback(() => {
     setOnboarded(true);
     completeLesson(TUTORIAL_LESSON.id, 3);
     setReplay(false);
   }, [setOnboarded, completeLesson]);
-
-  const skipTutorial = useCallback(() => {
-    setReplay(false);
-    // Skipping still unblocks the track...
-    completeLesson(TUTORIAL_LESSON.id, 1);
-    // ...but only a high-confidence returner is marked as onboarded. A merely
-    // *probable* returner is offered the walkthrough again next visit, because
-    // the detection is allowed to be wrong. See lib/visitor.ts.
-    if (visitor.confidence >= 0.8) setOnboarded(true);
-  }, [completeLesson, setOnboarded, visitor.confidence]);
 
   // Render nothing state-dependent until localStorage has been read, or a
   // returning child sees "0 stars" flash before their real progress arrives.
@@ -151,10 +152,25 @@ export function HomeScreen() {
         </Card>
 
         {/* --- The track ---------------------------------------------- */}
+        {/* Only a small window around "where am I" renders by default — a
+            7-year-old scrolling past 100 rows to find today's lesson is the
+            clutter this was built to avoid. "כל המסלול" reveals the rest on
+            request; nothing is hidden permanently. */}
         <section {...tourAttr("map")} aria-label="המסלול" className="flex flex-col gap-2">
-          <h2 className="text-lg font-bold text-ink-soft">המסלול שלי</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-ink-soft">המסלול שלי</h2>
+            {!showFullMap && track.length > visibleTrack.length ? (
+              <button
+                type="button"
+                onClick={() => setShowFullMap(true)}
+                className="min-h-11 rounded-full px-3 text-sm font-bold text-brand underline underline-offset-4"
+              >
+                כל המסלול ({track.length})
+              </button>
+            ) : null}
+          </div>
           <ol className="flex flex-col gap-2">
-            {track.map((lesson) => {
+            {visibleTrack.map((lesson) => {
               const done = progress.lessonsCompleted.includes(lesson.id);
               const unlocked = isLessonUnlocked(progress, lesson);
               const isNext = next?.id === lesson.id;
@@ -198,11 +214,7 @@ export function HomeScreen() {
       </main>
 
       {showTutorial ? (
-        <Walkthrough
-          lesson={TUTORIAL_LESSON}
-          onFinish={finishTutorial}
-          onSkip={skipTutorial}
-        />
+        <Walkthrough lesson={TUTORIAL_LESSON} onFinish={finishTutorial} />
       ) : null}
     </>
   );

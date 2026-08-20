@@ -23,16 +23,16 @@
  *     ordinary button instead of trapping the child. Same for a missing
  *     lesson, a zero-size element, or a resize mid-step.
  *
- *  5. THE ESCAPE HATCH IS VISIBLE, NOT AUTOMATIC. Returning visitors get a
- *     large skip button — after a delay, so it cannot be hit by reflex. A
- *     genuine first-timer never sees it. And "הראה לי שוב" lives permanently
- *     on the home screen, so a wrongly-skipped child is one tap from here.
+ *  5. NO IN-TOUR SKIP BUTTON. A visible skip control was tried and removed —
+ *     it was a second thing to read on the highest-risk screen in the
+ *     product, and a hurried parent skipping it for the child defeats the
+ *     point. The escape hatch lives on the home screen instead: "הראה לי שוב"
+ *     replays the tour any time, and Progress.onboarded (this device already
+ *     finished it once) is still the only signal that skips it automatically.
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Lesson, TutorialStep } from "@/lib/types";
-import { useProgress } from "@/lib/progress-context";
-import { useVisitor } from "@/lib/app-providers";
 import { playSfx, primeAudio, say } from "@/lib/audio";
 import { BigButton } from "@/components/ui/kit";
 
@@ -61,29 +61,16 @@ function measure(selector: string): Box | null {
 export function Walkthrough({
   lesson,
   onFinish,
-  onSkip,
 }: {
   lesson: Lesson;
   onFinish: () => void;
-  onSkip: () => void;
 }) {
-  const visitor = useVisitor();
   const steps = lesson.steps.filter((s): s is TutorialStep => s.type === "tutorial");
 
   const [i, setI] = useState(0);
   const [box, setBox] = useState<Box | null>(null);
-  const [skipVisible, setSkipVisible] = useState(false);
   const step = steps[i];
   const finishedRef = useRef(false);
-
-  /* --- Skip button: visible only for probable returners, and delayed --- */
-  useEffect(() => {
-    if (!visitor.mayOfferSkip) return;
-    const delay = visitor.skipDelayMs;
-    if (!Number.isFinite(delay)) return;
-    const t = setTimeout(() => setSkipVisible(true), delay);
-    return () => clearTimeout(t);
-  }, [visitor.mayOfferSkip, visitor.skipDelayMs]);
 
   /* --- Keep the spotlight glued to its element ------------------------ */
   useLayoutEffect(() => {
@@ -138,12 +125,17 @@ export function Walkthrough({
   // Degraded mode: the element we were told to point at is not on screen.
   const degraded = needsTap && box === null;
 
-  const coachTop =
+  // Clamped to a 12px margin at both edges: the card can be tall on a small
+  // screen (long Hebrew instructions), and .efh-coach scrolls internally
+  // once it hits max-height — but it must never START past the fold, or
+  // that internal scrollbar is invisible and the card reads as missing.
+  const rawCoachTop =
     box && box.top > 220
       ? Math.max(12, box.top - 190)
       : box
         ? Math.min(window.innerHeight - 210, box.top + box.height + 16)
         : 0;
+  const coachTop = box ? Math.min(Math.max(rawCoachTop, 12), window.innerHeight - 120) : rawCoachTop;
 
   return (
     <div
@@ -209,20 +201,6 @@ export function Walkthrough({
           </p>
         )}
       </div>
-
-      {skipVisible ? (
-        <button
-          type="button"
-          onClick={() => {
-            playSfx("tap");
-            onSkip();
-          }}
-          className="absolute bottom-4 left-1/2 z-[74] min-h-[64px] -translate-x-1/2 rounded-[var(--radius-kid)] border-[3px] border-paper bg-card px-6 text-lg font-bold"
-        >
-          <span aria-hidden>⏭ </span>
-          כבר ראיתי — דלג
-        </button>
-      ) : null}
     </div>
   );
 }

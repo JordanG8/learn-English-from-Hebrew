@@ -1,7 +1,19 @@
 import type { Metadata, Viewport } from "next";
+import { Assistant } from "next/font/google";
 import "./globals.css";
 import { AppProviders } from "@/lib/app-providers";
 import { readServerVisit } from "@/lib/visitor-server";
+
+// Assistant: a Google Font drawn for Hebrew, with a matching Latin set — one
+// typeface reads naturally on both sides of the RTL/LTR split in this app.
+// next/font self-hosts it at build time, so there is no runtime dependency on
+// fonts.googleapis.com and no layout-shift flash of a fallback face.
+const assistant = Assistant({
+  subsets: ["hebrew", "latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-assistant",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "אנגלית מההתחלה",
@@ -24,7 +36,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const visit = await readServerVisit();
 
   return (
-    <html lang="he" dir="rtl">
+    <html lang="he" dir="rtl" className={assistant.variable}>
       <body className="min-h-dvh antialiased">
         <AppProviders
           serverVisit={{ cookie: visit.cookie, currentIpHash: visit.currentIpHash }}

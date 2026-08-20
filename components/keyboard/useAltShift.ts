@@ -11,16 +11,29 @@ import type { Lang } from "@/lib/types";
  *    `event.key`, because `event.key` for a modifier is "Alt"/"Shift" but the
  *    *other* keys in the app are matched by code and we want one consistent
  *    rule everywhere.
+ *  • We track "is Alt down" / "is Shift down" ourselves in refs, rather than
+ *    trusting `event.altKey`/`event.shiftKey` on the *other* key's event.
+ *    Those flags are unreliable across browsers/OSes right at the instant a
+ *    modifier itself is pressed (observed: Firefox on Windows can report
+ *    `shiftKey: false` on the ShiftLeft keydown event itself), which was
+ *    silently breaking the chord. Our own refs don't depend on that.
  *  • The chord fires once per press, latched until BOTH modifiers are released.
  *    Without the latch, holding Alt and tapping Shift twice would flip-flop the
  *    layout under the child's fingers.
- *  • Some browsers/OSes swallow the real Alt+Shift before it reaches the page
- *    (it is an OS-level shortcut). That is fine and even desirable: the OS
- *    switched too. The visible tap toggle in <LanguageSwitch/> is the
- *    guaranteed path, and lessons should accept either.
+ *  • We preventDefault on every Alt/Shift keydown (not just once the chord
+ *    completes) because in Firefox and old Edge, tapping Alt alone moves
+ *    focus to the browser's menu bar — which then swallows the Shift keydown
+ *    before it ever reaches the page, so the chord never completes.
+ *  • Some browsers/OSes still swallow the real Alt+Shift before it reaches
+ *    the page (a true OS-level global shortcut). That is fine and even
+ *    desirable: the OS switched too. The visible tap toggle in
+ *    <LanguageSwitch/> is the guaranteed path, and lessons should accept
+ *    either.
  */
 export function useAltShift(onChord: () => void, enabled = true): void {
   const latched = useRef(false);
+  const altDown = useRef(false);
+  const shiftDown = useRef(false);
   const handler = useRef(onChord);
   handler.current = onChord;
 
@@ -31,25 +44,27 @@ export function useAltShift(onChord: () => void, enabled = true): void {
     const isShift = (c: string) => c === "ShiftLeft" || c === "ShiftRight";
 
     const down = (e: KeyboardEvent) => {
-      if (e.repeat) return;
       if (!isAlt(e.code) && !isShift(e.code)) return;
-      // Both halves of the chord down at once?
-      const both = (e.altKey || isAlt(e.code)) && (e.shiftKey || isShift(e.code));
-      if (both && !latched.current) {
+      if (isAlt(e.code)) altDown.current = true;
+      if (isShift(e.code)) shiftDown.current = true;
+      // Stop Alt/Shift acting as a menu accelerator or focus-stealer mid-lesson.
+      e.preventDefault();
+      if (e.repeat) return;
+      if (altDown.current && shiftDown.current && !latched.current) {
         latched.current = true;
-        // Stop the browser using Alt as a menu accelerator mid-lesson.
-        e.preventDefault();
         handler.current();
       }
     };
 
     const up = (e: KeyboardEvent) => {
-      if (isAlt(e.code) || isShift(e.code)) {
-        if (!e.altKey && !e.shiftKey) latched.current = false;
-      }
+      if (isAlt(e.code)) altDown.current = false;
+      if (isShift(e.code)) shiftDown.current = false;
+      if (!altDown.current && !shiftDown.current) latched.current = false;
     };
 
     const blur = () => {
+      altDown.current = false;
+      shiftDown.current = false;
       latched.current = false;
     };
 
