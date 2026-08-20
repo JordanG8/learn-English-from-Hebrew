@@ -79,3 +79,183 @@ html, body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ==================================================================
+ * ADDITIONS — lesson player, celebration, walkthrough spotlight and the
+ * fallback keyboard surface (lib/keyboard-adapter.tsx). Appended by the
+ * architecture module; the five rules above still govern everything here.
+ * All `efh-kb-*` classes belong to the FALLBACK keyboard only — the real
+ * VirtualKeyboard owns its own styling.
+ * ================================================================== */
+
+/* --- Fallback keyboard surface ----------------------------------- */
+.efh-kb-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.5rem;
+  border-radius: var(--radius-kid);
+  background: oklch(0.94 0.01 260);
+  user-select: none;
+}
+.efh-kb-row { display: flex; gap: 0.35rem; width: 100%; }
+.efh-kb-key {
+  /* 44px is the platform minimum; a full keyboard cannot give every key 64px
+     on a 360px phone, so key targets are 44px tall and the LESSON's answer
+     targets (which rule 2 is really about) stay at 64px+. */
+  min-height: 44px;
+  min-width: 0;
+  border-radius: 0.6rem;
+  border: 2px solid oklch(0.86 0.01 260);
+  font-weight: 700;
+  font-size: clamp(0.75rem, 3.2vw, 1.15rem);
+  display: grid;
+  place-items: center;
+  transition: transform 70ms ease, box-shadow 70ms ease;
+}
+.efh-kb-key:active { transform: translateY(2px); }
+.efh-kb-key[data-anchor="1"] { border-bottom-width: 6px; }
+.efh-kb-key[data-highlight="1"] {
+  outline: 4px solid var(--color-go);
+  outline-offset: 2px;
+  animation: efh-pulse 1.1s ease-in-out infinite;
+  z-index: 1;
+}
+.efh-kb-key[data-wrong="1"] { animation: efh-wobble 0.35s ease-in-out; }
+
+@keyframes efh-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 oklch(0.66 0.17 150 / 0.55); }
+  50% { box-shadow: 0 0 0 12px oklch(0.66 0.17 150 / 0); }
+}
+@keyframes efh-wobble {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+/* --- Word slots --------------------------------------------------- */
+.efh-slot {
+  min-width: 56px;
+  min-height: 72px;
+  border-radius: 1rem;
+  border: 4px dashed oklch(0.8 0.02 260);
+  display: grid;
+  place-items: center;
+  font-size: 2.5rem;
+  font-weight: 800;
+  font-family: var(--font-latin);
+  background: var(--color-card);
+}
+.efh-slot[data-filled="1"] {
+  border-style: solid;
+  border-color: var(--color-go);
+  background: var(--color-go-soft);
+  animation: efh-land 0.28s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.efh-slot[data-active="1"] { border-color: var(--color-brand); animation: efh-pulse 1.1s ease-in-out infinite; }
+@keyframes efh-land {
+  from { transform: scale(0.4) translateY(-30px); opacity: 0; }
+  to { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+/* --- Celebration -------------------------------------------------- */
+.confetti-layer {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 60;
+}
+.confetti-piece {
+  position: absolute;
+  top: -5vh;
+  border-radius: 2px;
+  animation-name: efh-fall;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+@keyframes efh-fall {
+  from { transform: translate3d(0, -10vh, 0) rotate(0deg); opacity: 1; }
+  to { transform: translate3d(var(--drift, 0), 110vh, 0) rotate(720deg); opacity: 0.9; }
+}
+.star-pop { animation: efh-star-pop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+@keyframes efh-star-pop {
+  from { transform: scale(0) rotate(-40deg); opacity: 0; }
+  to { transform: scale(1) rotate(0); opacity: 1; }
+}
+.efh-hero {
+  animation: efh-hero 0.6s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+  font-size: clamp(6rem, 40vw, 14rem);
+  line-height: 1;
+}
+@keyframes efh-hero {
+  0% { transform: scale(0.2); opacity: 0; }
+  70% { transform: scale(1.12); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* --- Walkthrough spotlight ---------------------------------------- */
+/* The dimming is done with a giant box-shadow on a transparent hole rather
+   than four positioned panels — one element, no layout thrash on scroll. */
+.efh-spotlight-hole {
+  position: fixed;
+  border-radius: 1.25rem;
+  box-shadow: 0 0 0 9999px oklch(0.24 0.03 260 / 0.72);
+  outline: 5px solid var(--color-star);
+  pointer-events: none;
+  z-index: 70;
+  transition: all 260ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.efh-spotlight-ring { animation: efh-pulse 1.4s ease-in-out infinite; }
+.efh-coach {
+  position: fixed;
+  z-index: 72;
+  max-width: min(92vw, 34rem);
+  border-radius: var(--radius-kid);
+  background: var(--color-card);
+  padding: 1.25rem;
+  box-shadow: 0 12px 40px oklch(0.24 0.03 260 / 0.35);
+}
+.efh-finger {
+  position: fixed;
+  z-index: 71;
+  font-size: 3rem;
+  pointer-events: none;
+  animation: efh-tap-hint 1.3s ease-in-out infinite;
+}
+@keyframes efh-tap-hint {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-14px); }
+}
+
+/* --- Chat --------------------------------------------------------- */
+.efh-bubble {
+  max-width: 85%;
+  border-radius: 1.25rem;
+  padding: 0.85rem 1.1rem;
+  font-size: 1.15rem;
+  line-height: 1.6;
+}
+.efh-bubble-ai { background: var(--color-brand-soft); border-end-start-radius: 0.35rem; }
+.efh-bubble-me { background: var(--color-go-soft); border-end-end-radius: 0.35rem; margin-inline-start: auto; }
+/* An English word inside a Hebrew sentence: isolate it so bidi cannot
+   reorder it, and mark it visually so the child knows it is the new thing. */
+.efh-en-word {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-family: var(--font-latin);
+  font-weight: 700;
+  color: var(--color-brand);
+}
+.efh-en-word[data-new="1"] {
+  background: oklch(0.95 0.08 85);
+  border-radius: 0.4rem;
+  padding-inline: 0.25rem;
+}
+
+/* --- Utility ------------------------------------------------------ */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
