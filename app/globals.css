@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+/*
+ * DESIGN SYSTEM — "impossible to misread".
+ * Rules every screen follows:
+ *   1. One primary action per screen. It is the biggest thing on it.
+ *   2. Minimum touch target 64px. Kid fingers on a tablet, not mouse pointers.
+ *   3. Every instruction carries THREE redundant channels: Hebrew text, an icon,
+ *      and colour. Never colour alone, never icon alone.
+ *   4. Hebrew is the instruction language and reads RTL. English is the content
+ *      being learned and always reads LTR, in its own container.
+ *   5. Nothing is hidden behind a gesture. No swipe-to-continue, no long-press.
+ */
+
+@theme {
+  --color-ink: oklch(0.24 0.03 260);
+  --color-ink-soft: oklch(0.45 0.02 260);
+  --color-paper: oklch(0.98 0.01 250);
+  --color-card: oklch(1 0 0);
+
+  --color-brand: oklch(0.58 0.19 265);
+  --color-brand-soft: oklch(0.93 0.05 265);
+  --color-go: oklch(0.66 0.17 150);
+  --color-go-soft: oklch(0.93 0.06 150);
+  --color-warn: oklch(0.72 0.16 65);
+  --color-star: oklch(0.79 0.16 85);
+  --color-stop: oklch(0.62 0.2 25);
+
+  --radius-kid: 1.5rem;
+  --font-hebrew: "Rubik", "Assistant", system-ui, sans-serif;
+  --font-latin: "Lexend", "Verdana", system-ui, sans-serif;
+}
+
+:root { color-scheme: light; }
+
+html, body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-hebrew);
+  /* Kids will mash the screen. Stop iOS double-tap zoom and rubber-banding. */
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* English content always renders LTR regardless of the RTL page direction. */
+.ltr { direction: ltr; unicode-bidi: isolate; font-family: var(--font-latin); }
+.rtl { direction: rtl; unicode-bidi: isolate; }
+
+/* The one primary action on a screen. */
+.btn-primary {
+  min-height: 72px;
+  border-radius: var(--radius-kid);
+  background: var(--color-go);
+  color: white;
+  font-weight: 700;
+  font-size: 1.5rem;
+  padding-inline: 2rem;
+  box-shadow: 0 6px 0 oklch(0.55 0.15 150);
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+.btn-primary:active { transform: translateY(4px); box-shadow: 0 2px 0 oklch(0.55 0.15 150); }
+
+.btn-secondary {
+  min-height: 64px;
+  border-radius: var(--radius-kid);
+  background: var(--color-card);
+  color: var(--color-ink);
+  border: 3px solid var(--color-brand-soft);
+  font-weight: 600;
+  font-size: 1.25rem;
+  padding-inline: 1.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
