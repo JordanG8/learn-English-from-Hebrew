@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { AppProviders } from "@/lib/app-providers";
+import { readServerVisit } from "@/lib/visitor-server";
 
 export const metadata: Metadata = {
   title: "אנגלית מההתחלה",
@@ -15,10 +17,21 @@ export const viewport: Viewport = {
   themeColor: "#f7f7fb",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Layer 1 of returning-visitor detection, read before first paint so the
+  // walkthrough decision never flashes. See lib/visitor.ts for the policy —
+  // in particular, why this can only ever offer a skip button and never skip.
+  const visit = await readServerVisit();
+
   return (
     <html lang="he" dir="rtl">
-      <body className="min-h-dvh antialiased">{children}</body>
+      <body className="min-h-dvh antialiased">
+        <AppProviders
+          serverVisit={{ cookie: visit.cookie, currentIpHash: visit.currentIpHash }}
+        >
+          {children}
+        </AppProviders>
+      </body>
     </html>
   );
 }
