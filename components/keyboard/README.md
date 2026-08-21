@@ -147,21 +147,29 @@ either way without configuration.
 
 ---
 
-## Phone-portrait degradation
+## Fitting narrow screens
 
-15 keyboard units across a 360 px screen is a 24 px key — about 3 mm, under the
-64 px floor and smaller than a child's fingertip. So on narrow screens the
-keyboard **reduces rather than shrinks**:
+The board is laid out in percentages of one 15-unit row, so it is **always
+exactly as wide as its container and never scrolls sideways**. A keyboard the
+child has to drag around is worse than a small one: the whole point is that a
+key lives at a fixed position they can learn, and that position has to be on
+screen.
 
-| condition (`mode: "auto"`) | what renders |
+| what | how |
 | --- | --- |
-| viewport > 700 px | full board, caps `clamp(52px, 6.4vw, 76px)` |
-| ≤ 700 px **with** `highlight` | **focus tiles** — only the highlighted keys, ≥ 76 px square, wrapped 3-up |
-| ≤ 700 px **without** `highlight` | full board at full size inside a horizontal scroller |
+| key width | `calc(var(--u) * width)`, `--u: 6.667%` — never a pixel minimum |
+| cap height | `clamp(20px, min(6.2cqw, 9.5vh), 72px)` — follows the container width, capped against viewport height so a landscape phone still shows all five rows |
+| padding / radius | `--kp` and the corner radius scale with the caps |
+| legends | the cap sets `font-size: calc(var(--kh) * 0.34)` and every legend is sized in `em`, so text shrinks with the key instead of overflowing it |
 
-Focus mode carries a visible "🗺️ הראו לי את כל המקלדת" button (nothing is behind
-a gesture), and it resets to focus whenever `highlight` changes — i.e. on each
-new lesson step. `mode="full"` and `mode="focus"` force either behaviour.
+At 360 px this gives ~22 px caps. Small, but complete, stationary, and
+identical in arrangement to the board on a desktop — which is what makes the
+positions learnable.
+
+`mode="auto"` and `mode="full"` both render this full board on every screen.
+`mode="focus"` still renders only the highlighted keys as big tiles, but no
+size or viewport triggers it any more: a caller has to ask for it, so the
+keyboard never rearranges itself underneath a child mid-lesson.
 
 ---
 

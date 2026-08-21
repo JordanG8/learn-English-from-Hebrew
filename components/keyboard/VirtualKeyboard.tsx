@@ -57,9 +57,9 @@ export interface VirtualKeyboardProps {
   captureKeys?: boolean;
 
   /**
-   * "auto"  — full keyboard on wide screens, focus tiles on a narrow phone.
-   * "full"  — always the whole keyboard (scrolls sideways when it must).
-   * "focus" — always just the highlighted keys, as big tiles.
+   * "auto" / "full" — the whole keyboard, scaled to fit the width it is given.
+   *                   It never scrolls and never rearranges, on any screen.
+   * "focus"         — just the highlighted keys, as big tiles.
    */
   mode?: KeyboardMode;
 
@@ -68,22 +68,6 @@ export interface VirtualKeyboardProps {
 }
 
 /* ------------------------------------------------------------------ */
-
-const NARROW_QUERY = "(max-width: 700px)";
-
-function useIsNarrow(): boolean {
-  // Starts false so SSR and the first client render agree; the effect corrects
-  // it before paint-relevant interaction. No hydration mismatch.
-  const [narrow, setNarrow] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia(NARROW_QUERY);
-    const sync = () => setNarrow(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
-  return narrow;
-}
 
 /**
  * The virtual keyboard: input device on touch, mirror + teaching aid on a
@@ -242,31 +226,23 @@ export function VirtualKeyboard({
   }, [physical, disabled, captureKeys, emit, flash, unflash, onSound]);
 
   /* ---- layout selection -------------------------------------------- */
-  const narrow = useIsNarrow();
-  const [forceFull, setForceFull] = useState(false);
   /*
-   * Phone-portrait degradation.
+   * The board always fits.
    *
-   * A 15-unit keyboard on a 360px screen gives 24px keys — about 3mm, smaller
-   * than a 7-year-old's fingertip and far under the 64px floor. So on a narrow
-   * screen we do not shrink; we reduce.
+   * Every key width is a percentage of one 15-unit row, so the whole keyboard
+   * scales to whatever width it is given and NEVER scrolls sideways: sliding a
+   * keyboard around is worse than small keys, because a key that has to be
+   * hunted for is not a key a child can learn a position for. Cap height is
+   * driven off the container width (and capped against the viewport height, so
+   * a landscape phone still shows all five rows), which keeps the caps square-
+   * ish at any size.
    *
-   *   • With a highlight set, we show ONLY those keys, as 76px+ tiles. The
-   *     lesson already knows which keys matter, so this is not hiding content —
-   *     it is the same spotlight the `dim` prop expresses, taken to its limit.
-   *   • With no highlight (free typing), we keep the whole board but let it
-   *     scroll sideways at a readable size rather than crushing it.
-   *   • A visible button switches to the full board either way. Nothing is
-   *     behind a gesture.
+   * The consequence is that `mode="auto"` renders the full board on every
+   * screen — the keys shrink instead of the layout changing. Focus tiles
+   * remain available, but only when a caller explicitly asks for `mode="focus"`,
+   * so the keyboard never rearranges itself underneath a child mid-lesson.
    */
-  // A new lesson step means a new spotlight; the "show me everything" escape
-  // hatch resets so the next step starts focused again.
-  useEffect(() => {
-    setForceFull(false);
-  }, [highlight]);
-
-  const focusMode =
-    mode === "focus" || (mode === "auto" && narrow && highlighted.size > 0 && !forceFull);
+  const focusMode = mode === "focus";
 
   const focusCaps = useMemo(() => {
     const wanted = highlight ?? [];
@@ -311,27 +287,28 @@ export function VirtualKeyboard({
               </div>
             ))}
           </div>
-          {mode === "auto" && (
-            <button
-              type="button"
-              onClick={() => setForceFull(true)}
-              className="btn-secondary rtl"
-            >
-              🗺️ הראו לי את כל המקלדת
-            </button>
-          )}
         </div>
       ) : (
-        <div className="w-full overflow-x-auto pb-2">
+        <div
+          className="w-full pb-1"
+          style={{ containerType: "inline-size" } as CSSProperties}
+        >
           <div
             dir="ltr"
-            className="mx-auto flex min-w-[820px] max-w-[1100px] flex-col"
+            className="mx-auto flex w-full max-w-[1100px] flex-col"
             style={
               {
-                // 15 keyboard units across; --kh keeps caps at a thumbable size
-                // and stops at 76px so a desktop does not get absurd keys.
+                // 15 keyboard units across, each a share of the row: the board
+                // is exactly as wide as its container, always.
                 "--u": `${100 / 15}%`,
-                "--kh": "clamp(52px, 6.4vw, 76px)",
+                // Cap height follows the container width so the caps stay
+                // square-ish, and is capped against the viewport height so all
+                // five rows survive a landscape phone. Small keys, never hidden
+                // keys.
+                "--kh": "clamp(20px, min(6.2cqw, 9.5vh), 72px)",
+                // Gap between caps shrinks with them, or thin boards lose their
+                // key area to padding.
+                "--kp": "clamp(1px, 0.35cqw, 4px)",
               } as CSSProperties
             }
           >
@@ -350,11 +327,6 @@ export function VirtualKeyboard({
               </div>
             ))}
           </div>
-          {narrow && (
-            <p className="rtl mt-1 text-center text-sm text-ink-soft">
-              ↔️ אפשר להזיז את המקלדת הצידה
-            </p>
-          )}
         </div>
       )}
     </section>
