@@ -281,16 +281,7 @@ export function PressKeyView({
 
   return (
     <div className="flex flex-col gap-4">
-      {/*
-       * The keyboard is the task; the prompt is context. Once the layout is
-       * right and nothing has been solved yet, the card greys out so the only
-       * coloured thing on the screen is the key to press.
-       *
-       * It comes back to full strength for the two things that are NOT
-       * context: the "switch layout" demand (an action, not a prompt) and the
-       * ✓ (feedback the child has to see land).
-       */}
-      <Card className={`flex flex-col items-center gap-3 ${langOk && !solved ? "efh-defocus" : ""}`}>
+      <Card className="flex flex-col items-center gap-3">
         <p className="text-center text-2xl font-bold">{step.promptHe}</p>
         {!langOk ? (
           <p className="rounded-2xl bg-warn/20 px-4 py-2 text-center text-lg font-bold">
@@ -401,8 +392,7 @@ export function BuildWordView({
   return (
     <div className="flex flex-col gap-4">
       <Card className="flex flex-col items-center gap-3">
-        {/* What word we are building: read once, then it is context. */}
-        <div className="efh-defocus flex items-center gap-3">
+        <div className="flex items-center gap-3">
           <span aria-hidden className="text-5xl">
             {step.emoji}
           </span>
@@ -422,7 +412,7 @@ export function BuildWordView({
           ))}
         </div>
         {target ? (
-          <p className="efh-defocus text-center text-2xl font-bold">
+          <p className="text-center text-2xl font-bold">
             עכשיו לחצו על <span className="ltr text-3xl font-black">{target}</span>
             {targetData ? (
               <span className="text-ink-soft"> ({targetData.nameHe})</span>
@@ -439,7 +429,7 @@ export function BuildWordView({
           type="button"
           onClick={() => speakEn(targetData?.nameEn ?? step.word, 0.7)}
           aria-label="השמע את האות"
-          className="efh-defocus grid h-16 w-16 place-items-center rounded-full border-[3px] border-brand-soft bg-card text-3xl"
+          className="grid h-16 w-16 place-items-center rounded-full border-[3px] border-brand-soft bg-card text-3xl"
         >
           <span aria-hidden>🔊</span>
         </button>

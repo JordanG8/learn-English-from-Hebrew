@@ -112,7 +112,7 @@ export function Key({
             : state === "highlight"
               ? "border-brand bg-brand-soft text-ink shadow-[0_0_0_4px_var(--color-star)]"
               : state === "dim"
-                ? "border-transparent bg-card text-ink-soft opacity-50 grayscale"
+                ? "border-transparent bg-card text-ink-soft opacity-35"
                 : "border-brand-soft bg-card text-ink",
           "shadow-[0_3px_0_rgba(0,0,0,0.10)] active:shadow-none",
         ].join(" ")}

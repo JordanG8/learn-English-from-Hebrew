@@ -92,25 +92,6 @@ html, body {
        components/keyboard/VirtualKeyboard landed and lib/keyboard-adapter
        started delegating to it. The keyboard owns its own styling.) --- */
 
-/* --- Defocus ------------------------------------------------------
-   Everything on the screen that is NOT the thing to do right now: greyed
-   back to half strength with the colour drained out, so the one part that
-   still has colour is the one part that wants a finger on it.
-
-   Colour is never the only channel (rule 3), so this only ever de-emphasises
-   what is already secondary — chrome, the prompt once it has been read, the
-   keys that are not the answer. Nothing whose meaning depends on colour is
-   defocused, and nothing here is hidden: greyed text is still text, and a
-   defocused control still works if it is tapped.
-
-   The transition is neutralised automatically by the global
-   prefers-reduced-motion rule above. */
-.efh-defocus {
-  opacity: 0.5;
-  filter: grayscale(1);
-  transition: opacity 0.25s ease, filter 0.25s ease;
-}
-
 /* Pulsing attention ring, used by the active word slot and the walkthrough
    spotlight. Neutralised automatically by the global prefers-reduced-motion
    rule above — the outline/colour channel survives on its own. */

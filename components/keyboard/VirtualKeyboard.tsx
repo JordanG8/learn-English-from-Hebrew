@@ -270,19 +270,12 @@ export function VirtualKeyboard({
       aria-label="מקלדת"
     >
       {showLanguageSwitch && (
-        /*
-         * The switch is only the task when the step needs a layout the child
-         * is not in. Once they are in the right one it is settled state, so it
-         * greys back and stops competing with the key they have to find.
-         */
-        <div className={requiredLang !== null && lang === requiredLang ? "efh-defocus" : undefined}>
-          <LanguageSwitch
-            lang={lang}
-            onLangChange={(next, via) => setLang(next, via)}
-            requiredLang={requiredLang}
-            enableShortcut={physical}
-          />
-        </div>
+        <LanguageSwitch
+          lang={lang}
+          onLangChange={(next, via) => setLang(next, via)}
+          requiredLang={requiredLang}
+          enableShortcut={physical}
+        />
       )}
 
       {focusMode ? (

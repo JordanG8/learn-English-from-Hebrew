@@ -235,13 +235,9 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
 
   return (
     <main className="flex min-h-dvh flex-col">
-      {/* Chrome, not task: the way back and the progress bar are never what
-          the child is being asked to do, so they sit greyed behind the step. */}
-      <div className="efh-defocus">
-        <ScreenHeader title={lesson.titleHe} onBack={() => router.push("/")} />
-        <div className="px-4">
-          <StepBar current={index} total={steps.length} />
-        </div>
+      <ScreenHeader title={lesson.titleHe} onBack={() => router.push("/")} />
+      <div className="px-4">
+        <StepBar current={index} total={steps.length} />
       </div>
 
       <div className="flex flex-1 flex-col gap-4 p-4">
