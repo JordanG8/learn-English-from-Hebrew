@@ -10,6 +10,38 @@
  *   4. Hebrew is the instruction language and reads RTL. English is the content
  *      being learned and always reads LTR, in its own container.
  *   5. Nothing is hidden behind a gesture. No swipe-to-continue, no long-press.
+ *
+ * COLOUR — "loud where it counts, calm where it matters".
+ * Rules 1-5 make the app impossible to misread. Rules 6-9 make it worth
+ * looking at, without spending any of that legibility. The long form lives in
+ * docs/design-philosophy.md; these are the enforceable versions.
+ *
+ *   6. COLOUR IS THE FOURTH CHANNEL, NEVER THE FIRST. Rule 3 still holds:
+ *      Hebrew text + icon + colour, always all three. New colour may only
+ *      repeat what text and shape already say.
+ *      TEST: render the screen through `filter: grayscale(1)`. If a child
+ *      could still finish the step, the colour is decoration. If not, meaning
+ *      has leaked into hue — move it back out.
+ *
+ *   7. ONE LOUD THING PER SCREEN. Saturation is scarce, and it belongs to the
+ *      one primary action (rule 1). Everything else lives in tints — soft
+ *      surfaces under full-contrast ink. Two saturated things on a screen is
+ *      two things competing for the same finger.
+ *      TEST: squint. The most colourful shape must be the thing to tap.
+ *
+ *   8. HUE IS IDENTITY, NOT STATE. Colour belongs to things that ARE something
+ *      — this lesson, this letter, this word — so screens differ from one
+ *      another and the track reads as a journey. Colour never belongs to
+ *      things that HAPPEN: right, wrong, locked and done keep the fixed
+ *      semantic set (go / stop / star / warn) plus an icon plus a sentence,
+ *      so a child is never asked to learn what purple means.
+ *
+ *   9. PAINT THE ROOM, NOT THE FURNITURE. Colour arrives as large, soft, low-
+ *      contrast surfaces BEHIND content — the page wash, a card tint, a hero
+ *      block. Text, icons and borders stay full-contrast on near-white. This
+ *      is how the app gets loud without getting hard to read.
+ *      TEST: every text/background pair ≥ 4.5:1. The identity pairs below are
+ *      verified at 6.2-7.5:1.
  */
 
 @theme {
@@ -33,10 +65,58 @@
   --font-latin: var(--font-assistant), "Assistant", system-ui, sans-serif;
 }
 
-:root { color-scheme: light; }
+:root {
+  color-scheme: light;
+
+  /*
+   * IDENTITY PALETTE (rule 8) — six hues that mean nothing on their own.
+   * A lesson is assigned one for life (lib/palette.ts), so the app changes
+   * colour as a child moves through it while no colour ever has to be decoded.
+   *
+   * WHY THESE SIX AND NOT A FULL RAINBOW. The semantic colours already own
+   * part of the wheel: stop 25°, warn 65°, star 85°, go 150°. An identity hue
+   * within ~25° of one of those reads as a verdict — a green letter looks
+   * "correct", an amber row looks "careful". So the identity palette is
+   * confined to the arc the state colours do not use, and every hue below is
+   * at least 25° from the nearest of them. Six varied hues that never lie beat
+   * eight that sometimes do.
+   *
+   * Each hue ships as a PAIR and is only ever used as a pair: `-soft` is a
+   * surface, `-ink` is what may sit on it. Both were contrast-checked against
+   * each other and against white — every pair lands between 6.2:1 and 7.5:1,
+   * comfortably past AA. Never add a hue without its verified partner, and
+   * never colour text with a `-soft`.
+   *
+   * These live in :root and NOT in @theme on purpose. Tailwind v4 only emits
+   * the theme variables some generated utility actually references, and these
+   * are read through inline var() set from lib/palette.ts — which the compiler
+   * cannot see. In @theme they were tree-shaken away and every tint silently
+   * fell back to white. Moving them back will break the tints again.
+   */
+  --color-teal-soft: oklch(0.94 0.055 190);
+  --color-teal-ink: oklch(0.42 0.135 190);
+  --color-aqua-soft: oklch(0.94 0.055 215);
+  --color-aqua-ink: oklch(0.42 0.135 215);
+  --color-sky-soft: oklch(0.94 0.055 240);
+  --color-sky-ink: oklch(0.42 0.135 240);
+  --color-violet-soft: oklch(0.94 0.055 292);
+  --color-violet-ink: oklch(0.42 0.135 292);
+  --color-orchid-soft: oklch(0.94 0.055 315);
+  --color-orchid-ink: oklch(0.42 0.135 315);
+  --color-rose-soft: oklch(0.94 0.055 340);
+  --color-rose-ink: oklch(0.42 0.135 340);
+}
+
 
 html, body {
-  background: var(--color-paper);
+  /* The room (rule 9): two very pale washes behind everything, so the page is
+     never a flat white sheet. They are light enough that body ink still reads
+     at 15:1 on top of them — the colour is in the room, not on the text. */
+  background:
+    radial-gradient(70rem 45rem at 12% -15%, oklch(0.95 0.05 240), transparent 62%),
+    radial-gradient(55rem 40rem at 92% 3%, oklch(0.95 0.045 330), transparent 58%),
+    var(--color-paper);
+  background-repeat: no-repeat;
   color: var(--color-ink);
   font-family: var(--font-hebrew);
   /* Kids will mash the screen. Stop iOS double-tap zoom and rubber-banding. */
@@ -91,6 +171,35 @@ html, body {
 /* --- (The fallback keyboard styles that lived here were removed once
        components/keyboard/VirtualKeyboard landed and lib/keyboard-adapter
        started delegating to it. The keyboard owns its own styling.) --- */
+
+/* --- Identity tint ------------------------------------------------
+   A surface wearing one of the eight identity hues. The hue arrives as two
+   custom properties set inline from lib/palette.ts (--tint / --tint-ink), so
+   a component never hard-codes a colour and Tailwind never has to generate
+   eight variants of the same class.
+
+   Only ever a SURFACE with its own verified ink on top (rule 9). If you find
+   yourself wanting `color: var(--tint)` on text, you want --tint-ink. */
+.efh-tint {
+  background: var(--tint, var(--color-card));
+  color: var(--color-ink);
+}
+.efh-tint-ink { color: var(--tint-ink, var(--color-ink)); }
+
+/* The round glyph badge on a tinted row: a deeper well of the same hue, with
+   the hue's ink on top. Carries an emoji, never a bare colour (rule 6). */
+.efh-badge {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  background: var(--color-card);
+  color: var(--tint-ink, var(--color-ink));
+  font-size: 1.5rem;
+  box-shadow: inset 0 0 0 2px var(--tint-ink, transparent);
+}
 
 /* Pulsing attention ring, used by the active word slot and the walkthrough
    spotlight. Neutralised automatically by the global prefers-reduced-motion

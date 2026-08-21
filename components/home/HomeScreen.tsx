@@ -22,6 +22,7 @@ import { evaluateChatGate, isLessonUnlocked, nextLesson } from "@/lib/srs";
 import { totalStars, distinctPracticeDays } from "@/lib/progress";
 import { practiceDaysLabelHe } from "@/lib/reward";
 import { tourAttr } from "@/lib/tour";
+import { tintStyle } from "@/lib/palette";
 import { BigButton, Card, ProgressRing, SecondaryButton, StarRow } from "@/components/ui/kit";
 import { Walkthrough } from "@/components/onboarding/Walkthrough";
 
@@ -101,7 +102,7 @@ export function HomeScreen() {
           </div>
           <div
             {...tourAttr("stars")}
-            className="flex min-h-16 items-center gap-2 rounded-[var(--radius-kid)] bg-card px-4 py-2"
+            className="flex min-h-16 items-center gap-2 rounded-[var(--radius-kid)] bg-star/25 px-4 py-2"
             aria-label={`${stars} כוכבים נאספו`}
           >
             <span aria-hidden className="text-3xl">⭐</span>
@@ -182,11 +183,21 @@ export function HomeScreen() {
                     disabled={!unlocked}
                     onClick={() => router.push(`/lesson/${lesson.id}`)}
                     aria-current={isNext ? "step" : undefined}
-                    className={`flex min-h-16 w-full items-center gap-3 rounded-[var(--radius-kid)] border-4 bg-card px-4 py-3 text-start disabled:opacity-45 ${
+                    /*
+                     * The row wears the lesson's identity hue (rule 8) — that
+                     * is the whole reason the track stops looking like a
+                     * spreadsheet. The border still carries STATE and is the
+                     * only thing that does: go = you are here, go-soft = done.
+                     * A locked row keeps the hue but is desaturated by
+                     * `disabled:` — colour is the fourth channel there, behind
+                     * the 🔒, the disabled attribute and the dimming.
+                     */
+                    style={unlocked ? tintStyle(lesson.id) : undefined}
+                    className={`efh-tint flex min-h-16 w-full items-center gap-3 rounded-[var(--radius-kid)] border-4 px-4 py-3 text-start disabled:opacity-45 disabled:grayscale ${
                       isNext ? "border-go" : done ? "border-go-soft" : "border-transparent"
                     }`}
                   >
-                    <span aria-hidden className="text-2xl">
+                    <span aria-hidden className="efh-badge">
                       {unlocked ? (KIND_ICON[lesson.kind] ?? "🔤") : "🔒"}
                     </span>
                     <span className="min-w-0 flex-1">

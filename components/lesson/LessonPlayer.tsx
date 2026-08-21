@@ -15,6 +15,7 @@
  * same eight questions.
  */
 
+import { tintStyle } from "@/lib/palette";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Lesson, Step } from "@/lib/types";
@@ -234,7 +235,13 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
   };
 
   return (
-    <main className="flex min-h-dvh flex-col">
+    /*
+     * The lesson's identity hue (rule 8) is carried on the whole screen, so
+     * moving from "האות A" to "האות B" visibly changes rooms. It reaches the
+     * step renderers as --tint / --tint-ink; nothing about the step's state
+     * rides on it.
+     */
+    <main className="flex min-h-dvh flex-col" style={tintStyle(lesson.id)}>
       <ScreenHeader title={lesson.titleHe} onBack={() => router.push("/")} />
       <div className="px-4">
         <StepBar current={index} total={steps.length} />
