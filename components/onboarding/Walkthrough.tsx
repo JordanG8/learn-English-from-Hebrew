@@ -128,17 +128,49 @@ export function Walkthrough({
   // Degraded mode: the element we were told to point at is not on screen.
   const degraded = needsTap && box === null;
 
-  // Clamped to a 12px margin at both edges: the card can be tall on a small
-  // screen (long Hebrew instructions), and .efh-coach scrolls internally
-  // once it hits max-height — but it must never START past the fold, or
-  // that internal scrollbar is invisible and the card reads as missing.
-  const rawCoachTop =
-    box && box.top > 220
-      ? Math.max(12, box.top - 190)
-      : box
-        ? Math.min(window.innerHeight - 210, box.top + box.height + 16)
-        : 0;
-  const coachTop = box ? Math.min(Math.max(rawCoachTop, 12), window.innerHeight - 120) : rawCoachTop;
+  /*
+   * Where the card goes.
+   *
+   * This used to assume the card was 190px tall and put it above the target
+   * whenever the target sat below 220px. Both numbers were guesses, and when
+   * the card was taller than the guess it covered the very thing it was
+   * pointing at — which is the bug that made the tour feel broken.
+   *
+   * So: measure the card, then pick the side that can actually hold it. Only
+   * when NEITHER side fits does it overlap, and .efh-coach scrolls internally
+   * in that case rather than running off the bottom of the screen.
+   */
+  const GAP = 16;
+  const EDGE = 12;
+  const coachRef = useRef<HTMLDivElement | null>(null);
+  const [coachH, setCoachH] = useState(190);
+
+  useLayoutEffect(() => {
+    const el = coachRef.current;
+    if (!el) return;
+    const measure = () => setCoachH(el.getBoundingClientRect().height);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [step]);
+
+  let coachTop = 0;
+  if (box) {
+    const vh = window.innerHeight;
+    const roomAbove = box.top - EDGE - GAP;
+    const roomBelow = vh - (box.top + box.height) - EDGE - GAP;
+    if (coachH <= roomAbove) {
+      coachTop = box.top - GAP - coachH;
+    } else if (coachH <= roomBelow) {
+      coachTop = box.top + box.height + GAP;
+    } else {
+      // Neither side fits: take the roomier one and clamp into the viewport.
+      coachTop =
+        roomBelow >= roomAbove ? box.top + box.height + GAP : Math.max(EDGE, box.top - GAP - coachH);
+    }
+    coachTop = Math.min(Math.max(coachTop, EDGE), Math.max(EDGE, vh - coachH - EDGE));
+  }
 
   return (
     <div
@@ -201,6 +233,7 @@ export function Walkthrough({
       ) : null}
 
       <div
+        ref={coachRef}
         className="efh-coach"
         style={
           box

@@ -97,11 +97,21 @@ export function SecondaryButton({
 export function Card({
   children,
   className = "",
+  style,
   ...rest
 }: { children: React.ReactNode; className?: string } & React.HTMLAttributes<HTMLDivElement>) {
   return (
+    /*
+     * A card is white so the ink on it always reads (rule 9) — the colour goes
+     * on the rim instead: a band of the ambient identity hue along the top
+     * edge. It costs no contrast, and it is what stops a screen full of cards
+     * from reading as a stack of forms. Screens that set no --tint fall back
+     * to the brand tint, so this is safe everywhere.
+     */
     <div
       className={`rounded-[var(--radius-kid)] bg-card p-5 shadow-[0_2px_10px_rgba(30,30,60,0.07)] ${className}`}
+      // A caller's own style still wins; the rim is a default, not a lock.
+      style={{ borderTop: "6px solid var(--tint-ink, var(--color-brand))", ...style }}
       {...rest}
     >
       {children}

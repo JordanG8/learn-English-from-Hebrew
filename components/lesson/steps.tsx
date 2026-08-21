@@ -66,8 +66,14 @@ function SpeakerButton({ onPlay, label }: { onPlay: () => void; label: string })
 
 function GiantLetter({ children }: { children: React.ReactNode }) {
   return (
+    /*
+     * The letter is the single biggest thing on its screen, so it is where the
+     * lesson's identity hue pays off most (rule 8). --tint-ink comes from the
+     * player; it is a verified ink, so this stays a text colour that passes AA
+     * rather than a decorative wash.
+     */
     <div
-      className="ltr select-none text-center font-black leading-none"
+      className="efh-tint-ink ltr select-none text-center font-black leading-none"
       style={{ fontSize: "clamp(5rem, 30vw, 10rem)" }}
     >
       {children}
