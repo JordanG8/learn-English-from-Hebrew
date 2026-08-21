@@ -6,9 +6,10 @@
  * a Vercel lambda's filesystem is read-only and gone at the end of the
  * request. So there are two backends, chosen at runtime:
  *
- *  - BLOB: Vercel Blob, used whenever BLOB_READ_WRITE_TOKEN is present. This
- *    is the production path: a clip recorded on a phone is on the CDN before
- *    the child hands the phone back. Setup is one click; see docs/voice.md.
+ *  - BLOB: Vercel Blob, used whenever a blob read-write token is present in
+ *    the environment under any name (see blobCredential). This is the
+ *    production path: a clip recorded on a phone is on the CDN before the
+ *    child hands the phone back. See docs/voice.md for the setup.
  *  - FS: `public/voice/`, used in local development. Same API, and clips land
  *    exactly where they would be committed, so `npm run dev` doubles as the
  *    "record straight into the repo" workflow.
@@ -67,12 +68,54 @@ export function validId(id: string): boolean {
   return VOICE_ID_RE.test(id);
 }
 
+/**
+ * FIND THE BLOB TOKEN, WHATEVER IT IS CALLED.
+ *
+ * Connecting a Blob store to a project injects a read-write token, but the
+ * variable's NAME depends on the prefix chosen when connecting: the default
+ * gives `BLOB_READ_WRITE_TOKEN`, and any other prefix gives
+ * `<PREFIX>_READ_WRITE_TOKEN`. Keying off the default name alone means a
+ * correctly connected store reads as "no storage", which is exactly the
+ * confusing failure this function exists to prevent.
+ *
+ * So the token is identified by its own shape — Vercel Blob tokens start with
+ * `vercel_blob_rw_` — and the default name is merely preferred when several
+ * match. Returns the NAME as well, so a diagnostic can say which variable was
+ * used without ever revealing the secret itself.
+ */
+export function blobCredential(): { name: string; token: string } | null {
+  const exact = process.env.BLOB_READ_WRITE_TOKEN;
+  if (exact) return { name: "BLOB_READ_WRITE_TOKEN", token: exact };
+  for (const [name, value] of Object.entries(process.env)) {
+    if (!value) continue;
+    if (!name.endsWith("READ_WRITE_TOKEN")) continue;
+    if (!value.startsWith("vercel_blob_rw_")) continue;
+    return { name, token: value };
+  }
+  return null;
+}
+
+/**
+ * Names — never values — of every token-shaped variable in the environment.
+ * Purely diagnostic: when the store reads as unconfigured, this is what
+ * distinguishes "the token is not here at all" (redeploy needed) from "it is
+ * here under a name I rejected" (a bug in blobCredential).
+ */
+export function blobTokenVarNames(): string[] {
+  return Object.keys(process.env).filter((n) => n.endsWith("READ_WRITE_TOKEN"));
+}
+
 export function backend(): Backend {
-  if (process.env.BLOB_READ_WRITE_TOKEN) return "blob";
+  if (blobCredential()) return "blob";
   // Only development may write into the repo: in production `public/` is
   // baked into the deployment and any write is silently lost at best.
   if (process.env.NODE_ENV !== "production") return "fs";
   return "none";
+}
+
+/** The SDK reads BLOB_READ_WRITE_TOKEN itself; under any other name, pass it. */
+function blobToken(): string | undefined {
+  return blobCredential()?.token;
 }
 
 /** "voice/word-CAT.webm" -> "word-CAT". Null for anything unexpected. */
@@ -95,7 +138,12 @@ async function blobList(): Promise<StoredClip[]> {
   const out: StoredClip[] = [];
   let cursor: string | undefined;
   do {
-    const page = await list({ prefix: VOICE_PREFIX, cursor, limit: 1000 });
+    const page = await list({
+      prefix: VOICE_PREFIX,
+      cursor,
+      limit: 1000,
+      token: blobToken(),
+    });
     for (const b of page.blobs) {
       const id = idFromPath(b.pathname);
       if (!id) continue;
@@ -116,12 +164,16 @@ async function blobList(): Promise<StoredClip[]> {
 async function blobDropExcept(id: string, keepExt: string | null): Promise<void> {
   try {
     const { list, del } = await import("@vercel/blob");
-    const page = await list({ prefix: `${VOICE_PREFIX}${id}.`, limit: 100 });
+    const page = await list({
+      prefix: `${VOICE_PREFIX}${id}.`,
+      limit: 100,
+      token: blobToken(),
+    });
     const keep = keepExt === null ? null : `${VOICE_PREFIX}${id}.${keepExt}`;
     const stale = page.blobs
       .filter((b) => idFromPath(b.pathname) === id && b.pathname !== keep)
       .map((b) => b.url);
-    if (stale.length) await del(stale);
+    if (stale.length) await del(stale, { token: blobToken() });
   } catch {
     if (keepExt === null) throw new Error("delete-failed");
     /* a leftover clip is cosmetic; never fail a recording over it */
@@ -143,6 +195,7 @@ async function blobPut(
     addRandomSuffix: false,
     allowOverwrite: true,
     cacheControlMaxAge: 60,
+    token: blobToken(),
   });
   await blobDropExcept(id, ext);
   return {

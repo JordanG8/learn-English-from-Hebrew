@@ -11,7 +11,12 @@
  */
 
 import { NextResponse } from "next/server";
-import { backend, listClips } from "@/lib/voice/store";
+import {
+  backend,
+  blobCredential,
+  blobTokenVarNames,
+  listClips,
+} from "@/lib/voice/store";
 import { passcodeRequired } from "@/lib/voice/guard";
 import { isKnownVoiceLine } from "@/lib/voice/lines";
 
@@ -29,8 +34,16 @@ export async function GET() {
   }
 
   const kind = backend();
+  // Storage diagnostics, names only and never a secret. Without these, a Blob
+  // store that is connected but whose token arrives under a non-default
+  // variable name is indistinguishable from no store at all.
+  const credential = blobCredential();
   return NextResponse.json(
     {
+      storage: {
+        tokenVar: credential?.name ?? null,
+        tokenVarsSeen: blobTokenVarNames(),
+      },
       // Clips for ids this build no longer knows about are kept in storage
       // (deleting someone's recording on a content edit would be rude) but
       // are not served to the player.
