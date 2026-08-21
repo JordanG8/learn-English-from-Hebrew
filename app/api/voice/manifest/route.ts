@@ -13,6 +13,7 @@
 import { NextResponse } from "next/server";
 import {
   backend,
+  blobAccessMode,
   blobCredential,
   blobEnvSummary,
   listClips,
@@ -47,12 +48,16 @@ export async function GET() {
       storage: {
         mode: credential?.mode ?? null,
         via: credential?.via ?? null,
+        access: blobAccessMode(),
         env: blobEnvSummary(),
       },
       // Clips for ids this build no longer knows about are kept in storage
       // (deleting someone's recording on a content edit would be rude) but
       // are not served to the player.
-      clips: clips.filter((c) => isKnownVoiceLine(c.id)),
+      // `pathname` is server-side bookkeeping; the client gets the URL only.
+      clips: clips
+        .filter((c) => isKnownVoiceLine(c.id))
+        .map(({ pathname: _pathname, ...clip }) => clip),
       backend: kind,
       writable: kind !== "none",
       passcodeRequired: passcodeRequired(),

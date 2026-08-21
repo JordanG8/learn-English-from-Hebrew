@@ -116,7 +116,12 @@ export function VoiceStudio() {
   const [askingPasscode, setAskingPasscode] = useState(false);
   const [autoAdvance, setAutoAdvance] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [take, setTake] = useState<{ url: string; ms: number } | null>(null);
+  // The blob is kept, not just its URL: a save that fails must be retryable
+  // without asking someone to perform the line again.
+  const [take, setTake] = useState<{ url: string; ms: number; blob: Blob } | null>(
+    null,
+  );
+  const [detail, setDetail] = useState<string | null>(null);
 
   const playerRef = useRef<HTMLAudioElement | null>(null);
   const advanceTimer = useRef<number | null>(null);
@@ -139,6 +144,7 @@ export function VoiceStudio() {
   useEffect(() => {
     setPhase("idle");
     setNote(null);
+    setDetail(null);
     setConfirmDelete(false);
     setTake(null);
   }, [groupIdx, lineIdx]);
@@ -229,6 +235,7 @@ export function VoiceStudio() {
       if (res.ok) {
         setPhase("saved");
         setNote(null);
+        setDetail(null);
         if (autoAdvance) {
           advanceTimer.current = window.setTimeout(advance, 650);
         }
@@ -236,6 +243,7 @@ export function VoiceStudio() {
       }
       setPhase("error");
       setNote(res.messageHe);
+      setDetail(res.detail ?? null);
       if (res.unauthorised) setAskingPasscode(true);
     },
     [autoAdvance, advance],
@@ -250,7 +258,7 @@ export function VoiceStudio() {
         setPhase("error");
         return;
       }
-      setTake({ url: result.url, ms: result.durationMs });
+      setTake({ url: result.url, ms: result.durationMs, blob: result.blob });
       // Hear it immediately: approving a take you have not heard is how a
       // whole session of clipped first syllables happens.
       play(result.url);
@@ -260,6 +268,7 @@ export function VoiceStudio() {
     if (recorder.state === "idle") {
       setPhase("idle");
       setNote(null);
+      setDetail(null);
       await recorder.start();
     }
   }, [line, recorder, play, saveTake]);
@@ -483,6 +492,10 @@ export function VoiceStudio() {
               <span aria-hidden>❌ </span>
               {note ?? "משהו נכשל"}
             </span>
+          ) : phase === "saved" ? (
+            <span className="text-go">
+              <span aria-hidden>✅ </span>נשמר
+            </span>
           ) : clip ? (
             <span className="text-go">
               <span aria-hidden>✅ </span>הוקלט {relativeHe(clip.updatedAt)}
@@ -494,6 +507,22 @@ export function VoiceStudio() {
             </span>
           )}
         </p>
+
+        {detail ? (
+          <p className="ltr w-full max-w-full overflow-x-auto rounded-xl bg-brand-soft/60 p-2 text-xs text-ink-soft">
+            {detail}
+          </p>
+        ) : null}
+
+        {phase === "error" && take && line ? (
+          <button
+            type="button"
+            onClick={() => void saveTake(take.blob, line.id)}
+            className="min-h-12 rounded-full border-2 border-brand bg-card px-5 text-lg font-bold"
+          >
+            <span aria-hidden>🔁 </span>שמירה חוזרת של ההקלטה
+          </button>
+        ) : null}
 
         <Meter level={recorder.level} active={recording} />
 
@@ -516,6 +545,23 @@ export function VoiceStudio() {
             ? `מקליט… עד ${Math.round(MAX_TAKE_MS / 1000)} שניות`
             : "לחיצה מתחילה, לחיצה שנייה עוצרת ושומרת"}
         </p>
+
+        {/*
+          The microphone is raw by default. This switch exists because a noisy
+          room is a real problem too — but it is off unless asked for, since
+          the processing it turns on is what makes a phone recording sound
+          like it was made underwater.
+        */}
+        <label className="flex items-center justify-center gap-2 text-sm text-ink-soft">
+          <input
+            type="checkbox"
+            checked={recorder.processed}
+            disabled={recording}
+            onChange={(e) => recorder.setProcessed(e.target.checked)}
+            className="h-5 w-5"
+          />
+          ניקוי רעשים של הדפדפן (מכבה כברירת מחדל — הוא מעגל את הקול)
+        </label>
 
         {clip || take ? (
           <button

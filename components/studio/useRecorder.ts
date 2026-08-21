@@ -14,6 +14,13 @@
  *  3. THE STREAM. Opening it per take costs a visible delay and re-arms the
  *     permission chip, so the stream is opened once and kept until the page
  *     is left. `release()` exists for that, and unmount calls it.
+ *  4. THE PROCESSING. Asking for echoCancellation / noiseSuppression /
+ *     autoGainControl puts a phone's microphone into its VOICE CALL path:
+ *     narrow, gated, aggressively de-noised. That is right for a phone call
+ *     and wrong for a recording — it is what makes a take sound like it was
+ *     made underwater, and no amount of care in the room fixes it. So the
+ *     default here is the raw microphone, and the processing is a switch the
+ *     person recording can turn on if their room genuinely needs it.
  *
  * The level meter is not decoration: the single most common recording failure
  * is a mic that is live but muted at the OS, and the only way to notice is to
@@ -34,6 +41,37 @@ export type RecorderState = "idle" | "arming" | "recording";
 
 /** A voice line is a word or a sentence. Anything longer is a stuck button. */
 export const MAX_TAKE_MS = 15_000;
+
+/** Opus at 128kbps is transparent for a single voice and still tiny per line. */
+const AUDIO_BITS_PER_SECOND = 128_000;
+
+/**
+ * The raw microphone. Every browser-side "improvement" is off, because each
+ * one is tuned for a phone call: the canceller ducks the start of a syllable,
+ * the suppressor eats the breath at the end of a word, and the gain control
+ * pumps between a loud letter name and a quiet letter sound.
+ *
+ * `channelCount: 1` because a voice line is mono and stereo would double the
+ * size for nothing. Sample rate is left to the device: asking for a specific
+ * one makes Safari fail the whole request rather than pick the nearest.
+ */
+const RAW_AUDIO: MediaTrackConstraints = {
+  echoCancellation: false,
+  noiseSuppression: false,
+  autoGainControl: false,
+  channelCount: 1,
+  // Chrome-only, and newer than the three above: without it, a phone can
+  // still apply "voice isolation" after the others are refused.
+  ...({ voiceIsolation: false } as MediaTrackConstraints),
+};
+
+/** What the browser does to a phone call. Opt-in, for a genuinely noisy room. */
+const PROCESSED_AUDIO: MediaTrackConstraints = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  channelCount: 1,
+};
 
 const PREFERRED_TYPES = [
   "audio/webm;codecs=opus",
@@ -71,6 +109,10 @@ function messageFor(err: unknown): string {
 
 export interface RecorderApi {
   state: RecorderState;
+  /** False (the default) records the raw microphone. See rule 4. */
+  processed: boolean;
+  /** Changing this re-opens the stream, so the next take uses the new mode. */
+  setProcessed: (value: boolean) => void;
   /** 0..1, smoothed. Flat while recording means a muted mic. */
   level: number;
   error: string | null;
@@ -84,6 +126,7 @@ export interface RecorderApi {
 
 export function useRecorder(): RecorderApi {
   const [state, setState] = useState<RecorderState>("idle");
+  const [processed, setProcessedState] = useState(false);
   const [level, setLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [supported, setSupported] = useState(true);
@@ -153,16 +196,22 @@ export function useRecorder(): RecorderApi {
     if (existing && existing.getAudioTracks().some((t) => t.readyState === "live")) {
       return existing;
     }
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
+    const audio = processed ? PROCESSED_AUDIO : RAW_AUDIO;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio });
+    } catch (err) {
+      // A browser that rejects a constraint outright (rather than ignoring it)
+      // must still be able to record — a processed take beats no take.
+      if (err instanceof DOMException && err.name === "OverconstrainedError") {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } else {
+        throw err;
+      }
+    }
     streamRef.current = stream;
     return stream;
-  }, []);
+  }, [processed]);
 
   const start = useCallback(async () => {
     if (state !== "idle") return;
@@ -171,7 +220,10 @@ export function useRecorder(): RecorderApi {
     try {
       const stream = await getStream();
       const mimeType = pickMimeType();
-      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const rec = new MediaRecorder(stream, {
+        ...(mimeType ? { mimeType } : {}),
+        audioBitsPerSecond: AUDIO_BITS_PER_SECOND,
+      });
       chunksRef.current = [];
       cancelledRef.current = false;
       rec.ondataavailable = (e) => {
@@ -252,6 +304,17 @@ export function useRecorder(): RecorderApi {
     }
   }, []);
 
+  /**
+   * Switching the mode has to drop the open stream: constraints are fixed at
+   * getUserMedia time, so a stream opened raw stays raw however the switch
+   * reads. The next take reopens with the new mode.
+   */
+  const setProcessed = useCallback((value: boolean) => {
+    setProcessedState(value);
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+  }, []);
+
   const release = useCallback(() => {
     cancel();
     stopMeter();
@@ -268,5 +331,16 @@ export function useRecorder(): RecorderApi {
 
   useEffect(() => release, [release]);
 
-  return { state, level, error, supported, start, stop, cancel, release };
+  return {
+    state,
+    processed,
+    setProcessed,
+    level,
+    error,
+    supported,
+    start,
+    stop,
+    cancel,
+    release,
+  };
 }

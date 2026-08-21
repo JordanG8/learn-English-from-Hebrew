@@ -83,8 +83,16 @@ export async function POST(req: NextRequest) {
         { status: 503 },
       );
     }
+    // The storage layer's own message, capped. A save that fails needs to say
+    // WHY on the phone that failed: "the credential is not allowed to write"
+    // and "the upload was cut off" are different problems with different
+    // fixes, and collapsing both into "try again" sends someone tapping the
+    // same button forever. Blob errors name mechanisms, never secrets.
+    const detail =
+      err instanceof Error ? err.message.slice(0, 300) : String(err).slice(0, 300);
+    console.error("[voice] save failed", { id, contentType, bytes: data.byteLength, detail });
     return NextResponse.json(
-      { ok: false, messageHe: "השמירה נכשלה. נסו שוב." },
+      { ok: false, messageHe: "השמירה נכשלה.", detail },
       { status: 500 },
     );
   }

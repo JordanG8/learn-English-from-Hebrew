@@ -69,7 +69,13 @@ export async function fetchStudioStatus(): Promise<StudioStatus> {
 
 export type SaveResult =
   | { ok: true; clip: VoiceClip }
-  | { ok: false; messageHe: string; unauthorised: boolean };
+  | {
+      ok: false;
+      messageHe: string;
+      unauthorised: boolean;
+      /** The server's own words, when it had any. Shown verbatim in the UI. */
+      detail?: string;
+    };
 
 export async function uploadClip(id: string, blob: Blob): Promise<SaveResult> {
   try {
@@ -79,7 +85,7 @@ export async function uploadClip(id: string, blob: Blob): Promise<SaveResult> {
       body: blob,
     });
     const json = (await res.json().catch(() => null)) as
-      | { ok?: boolean; clip?: VoiceClip; messageHe?: string }
+      | { ok?: boolean; clip?: VoiceClip; messageHe?: string; detail?: string }
       | null;
     if (res.ok && json?.ok && json.clip) {
       // Fold it in immediately: the line should read "recorded" before the
@@ -89,8 +95,9 @@ export async function uploadClip(id: string, blob: Blob): Promise<SaveResult> {
     }
     return {
       ok: false,
-      messageHe: json?.messageHe ?? "השמירה נכשלה. נסו שוב.",
+      messageHe: json?.messageHe ?? `השמירה נכשלה (${res.status}).`,
       unauthorised: res.status === 401,
+      detail: json?.detail,
     };
   } catch {
     return {

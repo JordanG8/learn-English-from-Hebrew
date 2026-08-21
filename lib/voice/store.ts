@@ -24,7 +24,11 @@ import { VOICE_ID_RE } from "./lines";
 
 export interface StoredClip {
   id: string;
+  /** What a browser should fetch. For blob clips this is our own audio route,
+   *  because a private store has no publicly fetchable URL. */
   url: string;
+  /** The blob pathname, when the blob backend holds this clip. Server-side. */
+  pathname?: string;
   updatedAt: number;
   size: number;
   source: "store";
@@ -175,6 +179,42 @@ function idFromPath(pathname: string): string | null {
 /* Blob backend                                                         */
 /* ------------------------------------------------------------------ */
 
+/**
+ * PUBLIC OR PRIVATE, DECIDED BY THE STORE AND NOT BY US.
+ *
+ * A Blob store is created private or public, and a `put` whose `access` does
+ * not match is rejected. That asymmetry is invisible from a read: `list` and
+ * `del` work on either kind, so a mismatched `access` shows up ONLY as every
+ * upload failing — which is exactly how it presented.
+ *
+ * Rather than hard-code a guess, the first call tries the likelier mode for a
+ * store made today (private) and falls back to the other, then remembers the
+ * answer for the life of the instance. Both modes stay supported because the
+ * repo should not stop working if the store is ever recreated the other way.
+ */
+type Access = "private" | "public";
+let knownAccess: Access | null = null;
+
+async function withAccess<T>(fn: (access: Access) => Promise<T>): Promise<T> {
+  const first: Access = knownAccess ?? "private";
+  try {
+    const result = await fn(first);
+    knownAccess = first;
+    return result;
+  } catch (err) {
+    if (knownAccess) throw err; // already proven; this is a real failure
+    const second: Access = first === "private" ? "public" : "private";
+    const result = await fn(second);
+    knownAccess = second;
+    return result;
+  }
+}
+
+/** The store's access mode, once something has proven it. Diagnostic only. */
+export function blobAccessMode(): Access | null {
+  return knownAccess;
+}
+
 async function blobList(): Promise<StoredClip[]> {
   const { list } = await import("@vercel/blob");
   const out: StoredClip[] = [];
@@ -191,7 +231,11 @@ async function blobList(): Promise<StoredClip[]> {
       if (!id) continue;
       out.push({
         id,
-        url: b.url,
+        // Never the blob's own URL: in a private store it is not fetchable by
+        // a browser, and an <audio> element cannot send an Authorization
+        // header. Our route streams it instead.
+        url: `/api/voice/audio/${id}`,
+        pathname: b.pathname,
         updatedAt: new Date(b.uploadedAt).getTime(),
         size: b.size,
         source: "store",
@@ -229,22 +273,65 @@ async function blobPut(
 ): Promise<StoredClip> {
   const { put } = await import("@vercel/blob");
   const ext = extForType(contentType);
+  const pathname = `${VOICE_PREFIX}${id}.${ext}`;
   // Re-recording must replace, not accumulate: same pathname, no random
   // suffix, and any clip stored under a different extension is dropped after.
-  const res = await put(`${VOICE_PREFIX}${id}.${ext}`, data, {
-    access: "public",
-    contentType,
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    cacheControlMaxAge: 60,
-    token: blobToken(),
-  });
+  await withAccess((access) =>
+    put(pathname, data, {
+      access,
+      contentType,
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      cacheControlMaxAge: 60,
+      token: blobToken(),
+    }),
+  );
   await blobDropExcept(id, ext);
   return {
     id,
-    url: res.url,
+    url: `/api/voice/audio/${id}`,
+    pathname,
     updatedAt: Date.now(),
     size: data.byteLength,
+    source: "store",
+  };
+}
+
+/** The bytes of one stored blob, for streaming to a browser or zipping. */
+export async function readBlobStream(
+  pathname: string,
+): Promise<{ stream: ReadableStream<Uint8Array>; contentType: string } | null> {
+  const { get } = await import("@vercel/blob");
+  return withAccess(async (access) => {
+    const result = await get(pathname, { access, token: blobToken() });
+    if (!result || result.statusCode !== 200 || !result.stream) return null;
+    return {
+      stream: result.stream,
+      contentType: typeForExt(pathname.split(".").pop() ?? "webm"),
+    };
+  });
+}
+
+/** Find one clip by id without listing the whole store. */
+export async function findClip(id: string): Promise<StoredClip | null> {
+  if (backend() !== "blob") {
+    const all = await listClips();
+    return all.find((c) => c.id === id) ?? null;
+  }
+  const { list } = await import("@vercel/blob");
+  const page = await list({
+    prefix: `${VOICE_PREFIX}${id}.`,
+    limit: 10,
+    token: blobToken(),
+  });
+  const hit = page.blobs.find((b) => idFromPath(b.pathname) === id);
+  if (!hit) return null;
+  return {
+    id,
+    url: `/api/voice/audio/${id}`,
+    pathname: hit.pathname,
+    updatedAt: new Date(hit.uploadedAt).getTime(),
+    size: hit.size,
     source: "store",
   };
 }
@@ -365,10 +452,11 @@ export async function readClip(
       const data = await fs.readFile(path.join(FS_DIR, name));
       return { name, data };
     }
-    const res = await fetch(clip.url, { cache: "no-store" });
-    if (!res.ok) return null;
-    const data = Buffer.from(await res.arrayBuffer());
-    const name = new URL(clip.url).pathname.split("/").pop() ?? `${clip.id}.webm`;
+    if (!clip.pathname) return null;
+    const got = await readBlobStream(clip.pathname);
+    if (!got) return null;
+    const data = Buffer.from(await new Response(got.stream).arrayBuffer());
+    const name = clip.pathname.split("/").pop() ?? `${clip.id}.webm`;
     return { name, data };
   } catch {
     return null;
