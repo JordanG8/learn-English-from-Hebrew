@@ -85,12 +85,31 @@ simpler for day-to-day work.
 > **Never commit either value.** `.env*.local` is already in `.gitignore`, as is `.vercel`.
 > No key belongs in the repo, in `vercel.json`, or in `next.config.ts`.
 
+### `BLOB_READ_WRITE_TOKEN` — required to record the app's voice in production
+
+The app speaks in a recorded human voice where one exists (see `docs/voice.md`).
+Recordings made from `/studio` on the deployed site are written to **Vercel
+Blob**, because a lambda's filesystem is read-only. Create the store under
+**Project → Storage → Create → Blob** and connect it to the project; Vercel
+adds `BLOB_READ_WRITE_TOKEN` itself. Without it the studio says so on screen
+and refuses to record rather than pretending to save. Locally, `npm run dev`
+needs nothing: clips are written straight into `public/voice/`.
+
+### `VOICE_STUDIO_PASSCODE` — required to record from the deployed site
+
+`/studio` writes the voice every child then hears, and the production URL is
+public. Set this to any string (Production, Preview and Development) and the
+studio asks for it once per device. If it is unset, recording is allowed in
+development and **refused in production** with a message saying what to set.
+
 ### Summary
 
 | Variable | Where it comes from | Deployed | Local |
 |---|---|---|---|
 | `AI_GATEWAY_API_KEY` | You create it in the AI Gateway dashboard | Set it in Project → Settings → Environment Variables | Put it in `.env.local` |
 | `VERCEL_OIDC_TOKEN` | Injected by Vercel automatically | Automatic, nothing to do | Only via `vercel env pull`, and it expires |
+| `BLOB_READ_WRITE_TOKEN` | Added by Vercel when you create a Blob store | Project → Storage → Create → Blob | Not needed; dev writes to `public/voice/` |
+| `VOICE_STUDIO_PASSCODE` | You choose it | Project → Settings → Environment Variables | Optional; dev allows recording without one |
 
 ## Model IDs
 

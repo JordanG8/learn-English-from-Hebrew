@@ -5,16 +5,31 @@
  *
  *  1. UI sound (correct / wrong / celebrate) is synthesised with WebAudio.
  *     No asset files, no network, no licensing, works offline.
- *  2. Speech (a letter's NAME or its SOUND) uses the browser's
- *     SpeechSynthesis with an en-US voice. This is the one place the app
- *     needs a real English pronunciation and it is not something a tone can
- *     fake. If no en voice exists, we degrade to silence — every step also
- *     carries its instruction as Hebrew text, per design rule 3, so audio is
- *     never the only channel.
+ *  2. Speech (a letter's NAME, its SOUND, a word, or a line of Hebrew
+ *     narration) plays a RECORDED HUMAN VOICE when one exists — see
+ *     lib/voice/ for the catalogue and /studio for how recordings get made.
+ *     A line nobody has recorded yet falls back to the browser's
+ *     SpeechSynthesis en-US voice, and if the device has no English voice
+ *     either, to silence. That last degradation is safe because every step
+ *     also carries its instruction as Hebrew text, per design rule 3, so
+ *     audio is never the only channel.
  *
  * NOTE: this is *output* speech only. Conversation mode is text-only and
  * never touches the microphone.
  */
+
+import {
+  letterNameLineId,
+  letterSoundLineId,
+  narrationLineId,
+  wordLineId,
+} from "@/lib/voice/lines";
+import {
+  loadVoiceManifest,
+  voiceManifestReady,
+  voiceUrl,
+} from "@/lib/voice/manifest";
+import { getLetter } from "@/lib/curriculum/alphabet";
 
 let ctx: AudioContext | null = null;
 let muted = false;
@@ -135,6 +150,120 @@ export function speakEn(text: string, rate = 0.75): void {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Recorded human voice — preferred over TTS wherever a clip exists     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * One element for all speech, so a new line cuts the previous one off the
+ * same way `speechSynthesis.cancel()` does. Created lazily and only in the
+ * browser.
+ */
+let clipEl: HTMLAudioElement | null = null;
+
+function clipElement(): HTMLAudioElement | null {
+  if (typeof window === "undefined") return null;
+  if (!clipEl) {
+    try {
+      clipEl = new Audio();
+      clipEl.preload = "auto";
+    } catch {
+      return null;
+    }
+  }
+  return clipEl;
+}
+
+/**
+ * Play the human recording for `lineId`; fall back to TTS when there is none.
+ *
+ * Ordering matters: a half-recorded catalogue is the normal state while the
+ * recording is in progress, so "no clip" is not an error and must not be
+ * louder or slower than the recorded path.
+ */
+export function playLine(
+  lineId: string,
+  fallback?: { text: string; rate?: number } | null,
+): void {
+  if (muted) return;
+  const speakFallback = () => {
+    if (fallback) speakEn(fallback.text, fallback.rate ?? 0.75);
+  };
+
+  // THE RACE THAT MATTERS: the walkthrough asks to speak the moment it
+  // mounts, which can be before the manifest fetch has resolved. Answering
+  // "not recorded" then would give the first line the child ever hears the
+  // robot voice — the exact thing this feature exists to remove. So when the
+  // list is not in yet, wait for it rather than guessing.
+  if (!voiceManifestReady()) {
+    void loadVoiceManifest().then(() => playLine(lineId, fallback));
+    return;
+  }
+
+  const url = voiceUrl(lineId);
+  if (!url) {
+    speakFallback();
+    return;
+  }
+
+  const el = clipElement();
+  if (!el) {
+    speakFallback();
+    return;
+  }
+  try {
+    // A recorded line supersedes anything still being spoken.
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    el.pause();
+    el.src = url;
+    el.currentTime = 0;
+    // A 404 (clip deleted between manifest load and playback) or a codec the
+    // device cannot decode both land here — TTS covers the gap.
+    el.onerror = () => speakFallback();
+    const p = el.play();
+    if (p && typeof p.catch === "function") {
+      p.catch(() => speakFallback());
+    }
+  } catch {
+    speakFallback();
+  }
+}
+
+/** The letter's NAME ("bee"), recorded if possible. */
+export function sayLetterName(letter: string, rate = 0.7): void {
+  const d = getLetter(letter);
+  playLine(letterNameLineId(letter), {
+    text: d?.nameEn ?? letter.toUpperCase(),
+    rate,
+  });
+}
+
+/** The letter's SOUND ("buh"), recorded if possible. */
+export function sayLetterSound(letter: string, rate = 0.6): void {
+  const d = getLetter(letter);
+  playLine(letterSoundLineId(letter), {
+    text: d?.soundSpeak ?? letter.toLowerCase(),
+    rate,
+  });
+}
+
+/** An English word, recorded if possible. */
+export function sayWord(word: string, rate = 0.7): void {
+  playLine(wordLineId(word), { text: word.toLowerCase(), rate });
+}
+
+/**
+ * A Hebrew narration line (the walkthrough, and every tutorial card).
+ *
+ * No fallback on purpose — see lib/voice/lines.ts. If it is not recorded, the
+ * card is read, not heard, exactly as it was before recordings existed.
+ */
+export function sayNarration(stepId: string): void {
+  playLine(narrationLineId(stepId), null);
+}
+
 /**
  * Resolve a Step's `say` key.
  *
@@ -159,15 +288,19 @@ export function say(key: string | undefined): void {
       playSfx(value as Sfx);
       break;
     case "letter-name":
-      speakEn(value.toUpperCase(), 0.7);
+      // Historically this carried the letter's NAME ("A"); both that and a
+      // bare letter resolve to the same recording, so old content still works.
+      sayLetterName(value);
       break;
     case "letter-sound":
-      // The caller passes an orthographic approximation of the phoneme,
-      // e.g. "letter-sound:ah" — TTS cannot pronounce bare IPA.
-      speakEn(value, 0.6);
+      // Two shapes are accepted: "letter-sound:B" (current, and what maps to
+      // a recording) and "letter-sound:buh" (the older orthographic hint,
+      // which only TTS can use). A single A-Z character means the former.
+      if (/^[A-Za-z]$/.test(value)) sayLetterSound(value);
+      else speakEn(value, 0.6);
       break;
     case "word":
-      speakEn(value.toLowerCase(), 0.7);
+      sayWord(value);
       break;
     case "en":
       speakEn(value, 0.8);
@@ -180,6 +313,9 @@ export function say(key: string | undefined): void {
 /** Call once from a click handler to satisfy mobile autoplay policies. */
 export function primeAudio(): void {
   audioContext();
+  // Warm the list of recorded lines. Idempotent, fail-silent, and needed
+  // before the first playLine so a recorded clip is not missed by a race.
+  void loadVoiceManifest();
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     try {
       window.speechSynthesis.getVoices();

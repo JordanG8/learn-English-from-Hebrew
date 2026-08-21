@@ -19,6 +19,8 @@ app/
   lesson/[id]/page.tsx  → components/lesson/LessonPlayer   (all 100 prerendered)
   chat/page.tsx         → components/chat/ChatScreen
   api/chat/route.ts     the only server-side secret-holder
+  api/voice/*           the recorded-voice manifest, clip write, zip export
+  studio/page.tsx       → components/studio/VoiceStudio (authoring tool)
   globals.css           design system + the five accessibility rules
 middleware.ts           sets the httpOnly visit cookie (layer 1 of 3)
 
@@ -29,7 +31,7 @@ lib/
   progress.ts           localStorage: load / coerce / migrate / pure updates
   srs.ts                THE SPINE: grading, due-ness, mastery, the chat gate
   reward.ts             stars, Hebrew praise, the anti-overjustification rules
-  audio.ts              WebAudio SFX + English TTS, both fail-silent
+  audio.ts              WebAudio SFX + speech: recorded clip first, TTS second
   tour.ts               the data-tour selector contract
   visitor.ts            returning-visitor policy (pure)
   visitor-server.ts     server-side read of the visit cookie
@@ -37,6 +39,13 @@ lib/
   progress-context.tsx  the single client owner of Progress
   keyboard-adapter.tsx  the ONE seam onto components/keyboard
   chat-prompt.ts        system prompt + lexicon enforcement (pure)
+  voice/
+    lines.ts            the closed catalogue of every spoken line
+    manifest.ts         client: which lines are recorded, and where
+    store.ts            server: Vercel Blob or public/voice, one API
+    guard.ts            who may change the app's voice
+    client.ts           the studio's side of the wire
+    zip.ts              dependency-free zip for the export
   curriculum/
     contract.ts         content types, declared apart from the content
     alphabet.ts         all 26 letters
@@ -49,6 +58,7 @@ components/
   lesson/               LessonPlayer + one renderer per Step variant
   home/                 HomeScreen
   onboarding/           Walkthrough
+  studio/               the recording desk (adult tool, not a kid screen)
   keyboard/             OWNED BY THE KEYBOARD MODULE — do not edit
 ```
 
@@ -57,7 +67,10 @@ components/
 **One seam per boundary.** Lesson code never imports `components/keyboard`
 directly; it goes through `lib/keyboard-adapter.tsx`. Content never hard-codes
 a CSS selector; it uses `lib/tour.ts`. Nothing outside `lib/skills.ts` parses a
-`SkillId`. Each of those is a single file to change when the other side moves.
+`SkillId`. No screen names an audio file; it calls `sayLetterName()`,
+`sayLetterSound()`, `sayWord()` or `sayNarration()` and `lib/audio.ts` decides
+between a recording and the synthesiser. Each of those is a single file to
+change when the other side moves.
 
 **Numbers live in one file.** `lib/pedagogy.ts` holds every threshold,
 interval, budget and probability, each tagged with `docs/research.md`'s
@@ -368,6 +381,13 @@ a one-off lesson, `push()` a `Lesson` in the right place; `order` and
 A lesson needs: a stable `id` (it is a localStorage key — never reuse or
 rename one), `kind`, `titleHe`, the `skills` it touches (this drives SRS
 scheduling), and its `steps`.
+
+### Adding a spoken line
+
+You do not. `lib/voice/lines.ts` derives the catalogue from the curriculum, so
+a new letter or word appears in `/studio` unrecorded, using TTS, until someone
+records it. See `docs/voice.md`. The one hard rule: a voice-line id IS the
+stored filename, so renaming an id orphans its recording.
 
 ### Adding a Step *type*
 

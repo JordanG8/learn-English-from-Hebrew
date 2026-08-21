@@ -36,7 +36,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Lesson, TutorialStep } from "@/lib/types";
-import { playSfx, primeAudio, say } from "@/lib/audio";
+import { playSfx, primeAudio, say, sayNarration } from "@/lib/audio";
 import { BigButton } from "@/components/ui/kit";
 
 interface Box {
@@ -107,7 +107,14 @@ export function Walkthrough({
 
   useEffect(() => {
     primeAudio();
-    if (step?.say) say(step.say);
+    if (!step) return;
+    // The walkthrough is the one place a child is spoken TO rather than
+    // taught a sound, so it gets a recorded Hebrew read of the card itself
+    // (recorded at /studio) alongside the content's own audio cue. With no
+    // recording it stays silent and the card is simply read, which is how it
+    // shipped — never a robot reading Hebrew to a seven-year-old.
+    sayNarration(step.id);
+    if (step.say) say(step.say);
   }, [step]);
 
   const next = useCallback(() => {

@@ -30,6 +30,14 @@ reward structure the drilling normally lacks.
 Next.js (App Router) · TypeScript · Tailwind v4 · Vercel · AI Gateway for
 conversation mode.
 
+## The app's voice
+
+Everything spoken — letter names, letter sounds, words, and the first-visit
+walkthrough — plays a **recorded human voice** when one exists, and falls back
+to browser TTS only for lines nobody has recorded yet. Recording happens at
+`/studio`, from a phone, and a line is audible in the app seconds later with no
+deploy. See `docs/voice.md`.
+
 ## Development
 
 ```bash

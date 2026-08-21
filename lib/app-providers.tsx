@@ -20,6 +20,7 @@ import {
   type VisitorVerdict,
 } from "./visitor";
 import { hasSeenLocally } from "./progress";
+import { loadVoiceManifest } from "./voice/manifest";
 import { TUTORIAL_SKIP_REVEAL_DELAY_MS } from "./pedagogy";
 
 export interface VisitorApi extends VisitorVerdict {
@@ -51,6 +52,10 @@ function VisitorProvider({
   useEffect(() => {
     setLocalSeen(hasSeenLocally());
     setClientReady(true);
+    // Which lines have a human recording. Fetched once per page load, before
+    // anything can ask to speak, so the first letter of the first lesson is
+    // already in the recorded voice rather than TTS-then-corrected.
+    void loadVoiceManifest();
   }, []);
 
   const value = useMemo<VisitorApi>(() => {

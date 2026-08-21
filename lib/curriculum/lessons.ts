@@ -75,7 +75,7 @@ export function soundStep(d: LetterData, taught: readonly string[], seed = 0): S
     answer: d.soundHe,
     options,
     promptHe: `איזה צליל עושה האות ${d.letter}?`,
-    say: `letter-sound:${d.soundSpeak}`,
+    say: `letter-sound:${d.letter}`,
   };
 }
 
@@ -346,7 +346,7 @@ function letterLesson(
         target: null,
         advanceOn: "next-button",
         promptHe: `זאת האות ${d.letter}. היא עושה את הצליל "${d.soundHe}" — כמו ב־${d.exampleWord} (${d.exampleWordHe}) ${d.emoji}`,
-        say: `letter-sound:${d.soundSpeak}`,
+        say: `letter-sound:${d.letter}`,
       },
       // 2. sound  3. name  — phonics before orthography
       soundStep(d, taught),

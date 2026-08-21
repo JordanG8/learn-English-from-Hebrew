@@ -22,7 +22,7 @@ import { useProgress } from "@/lib/progress-context";
 import { chatLexicon, evaluateChatGate, masteredLetters } from "@/lib/srs";
 import { CHAT_NEW_WORDS_PER_TURN } from "@/lib/pedagogy";
 import { FALLBACK_REPLY_HE } from "@/lib/chat-prompt";
-import { speakEn } from "@/lib/audio";
+import { sayWord } from "@/lib/audio";
 import { BigButton, Card, ProgressRing, ScreenHeader, SecondaryButton } from "@/components/ui/kit";
 
 interface Msg {
@@ -44,7 +44,7 @@ function renderMixed(text: string, novel: readonly string[]) {
         type="button"
         className="efh-en-word"
         data-new={isNew ? "1" : undefined}
-        onClick={() => speakEn(part.toLowerCase(), 0.7)}
+        onClick={() => sayWord(part)}
         aria-label={`השמע את המילה ${part}`}
       >
         {part}

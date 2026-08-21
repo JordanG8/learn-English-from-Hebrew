@@ -26,7 +26,14 @@ import type {
 } from "@/lib/types";
 import { KeyboardSurface } from "@/lib/keyboard-adapter";
 import { getLetter } from "@/lib/curriculum";
-import { playSfx, say, speakEn } from "@/lib/audio";
+import {
+  playSfx,
+  say,
+  sayLetterName,
+  sayLetterSound,
+  sayNarration,
+  sayWord,
+} from "@/lib/audio";
 import { BigButton, Card } from "@/components/ui/kit";
 import { tourAttr } from "@/lib/tour";
 import type { Lang } from "@/lib/types";
@@ -158,9 +165,12 @@ export function LetterSoundView({
   const data = getLetter(step.letter);
 
   const play = useCallback(() => {
-    if (step.mode === "name") speakEn(data?.nameEn ?? step.letter, 0.7);
-    else speakEn(data?.soundSpeak ?? step.letter, 0.6);
-  }, [step.mode, step.letter, data]);
+    // The recorded human voice if there is one, TTS if there is not. This is
+    // the step where the difference matters most: a letter SOUND is not a
+    // word, so a synthesiser has nothing to pronounce and guesses.
+    if (step.mode === "name") sayLetterName(step.letter);
+    else sayLetterSound(step.letter);
+  }, [step.mode, step.letter]);
 
   useEffect(() => {
     // Auto-play once per step: the sound IS the question.
@@ -367,7 +377,7 @@ export function BuildWordView({
             doneRef.current = true;
             setDone(true);
             playSfx("celebrate");
-            speakEn(step.word.toLowerCase(), 0.7);
+            sayWord(step.word);
           }
           return next;
         });
@@ -433,7 +443,7 @@ export function BuildWordView({
         ) : null}
         <button
           type="button"
-          onClick={() => speakEn(targetData?.nameEn ?? step.word, 0.7)}
+          onClick={() => sayLetterName(target ?? step.word)}
           aria-label="השמע את האות"
           className="grid h-16 w-16 place-items-center rounded-full border-[3px] border-brand-soft bg-card text-3xl"
         >
@@ -469,9 +479,15 @@ export function TutorialCardView({
   onAdvance,
 }: StepRenderProps & { step: TutorialStep }) {
   useEffect(() => {
-    const t = setTimeout(() => say(step.say), 300);
+    const t = setTimeout(() => {
+      // Narration first (the human reading the card), then whatever cue the
+      // content asked for. A tutorial card with no recording is silent, as it
+      // always was — see lib/voice/lines.ts.
+      sayNarration(step.id);
+      say(step.say);
+    }, 300);
     return () => clearTimeout(t);
-  }, [step.say]);
+  }, [step.id, step.say]);
 
   return (
     <div className="flex flex-1 flex-col justify-between gap-6 py-4">
