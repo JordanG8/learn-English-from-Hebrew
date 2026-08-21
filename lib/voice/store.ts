@@ -6,10 +6,10 @@
  * a Vercel lambda's filesystem is read-only and gone at the end of the
  * request. So there are two backends, chosen at runtime:
  *
- *  - BLOB: Vercel Blob, used whenever a blob read-write token is present in
- *    the environment under any name (see blobCredential). This is the
- *    production path: a clip recorded on a phone is on the CDN before the
- *    child hands the phone back. See docs/voice.md for the setup.
+ *  - BLOB: Vercel Blob, used whenever this deployment holds a blob credential
+ *    of either kind — see blobCredential, which is where the two mechanisms
+ *    are explained. This is the production path: a clip recorded on a phone
+ *    is on the CDN before the child hands the phone back. See docs/voice.md.
  *  - FS: `public/voice/`, used in local development. Same API, and clips land
  *    exactly where they would be committed, so `npm run dev` doubles as the
  *    "record straight into the repo" workflow.
@@ -69,40 +69,74 @@ export function validId(id: string): boolean {
 }
 
 /**
- * FIND THE BLOB TOKEN, WHATEVER IT IS CALLED.
+ * HOW THIS DEPLOYMENT IS ALLOWED TO TALK TO BLOB STORAGE.
  *
- * Connecting a Blob store to a project injects a read-write token, but the
- * variable's NAME depends on the prefix chosen when connecting: the default
- * gives `BLOB_READ_WRITE_TOKEN`, and any other prefix gives
- * `<PREFIX>_READ_WRITE_TOKEN`. Keying off the default name alone means a
- * correctly connected store reads as "no storage", which is exactly the
- * confusing failure this function exists to prevent.
+ * There are two mechanisms, and which one you get depends on how the store
+ * was attached — a distinction that cost a full afternoon to find, so it is
+ * written down here rather than assumed:
  *
- * So the token is identified by its own shape — Vercel Blob tokens start with
- * `vercel_blob_rw_` — and the default name is merely preferred when several
- * match. Returns the NAME as well, so a diagnostic can say which variable was
- * used without ever revealing the secret itself.
+ *  - OIDC (what connecting a store in the dashboard actually does today).
+ *    Vercel injects `BLOB_STORE_ID` plus a short-lived `VERCEL_OIDC_TOKEN`
+ *    per deployment, and NO long-lived secret. This is the better mechanism:
+ *    nothing to rotate, nothing to leak, and it is what a correctly connected
+ *    store looks like. The SDK resolves it on its own once a store id is
+ *    present, so there is nothing to pass.
+ *
+ *  - A READ-WRITE TOKEN, created by hand or by an older integration, in
+ *    `BLOB_READ_WRITE_TOKEN` or `<PREFIX>_READ_WRITE_TOKEN` — the name varies
+ *    with the prefix chosen at connect time, so the token is recognised by
+ *    its own shape (`vercel_blob_rw_`) rather than by any one name.
+ *
+ * Looking only for the second one is what made a properly connected store
+ * report "no storage": the token it was waiting for is never issued.
+ *
+ * Values are never returned to callers that only need to know the mechanism —
+ * `mode` and `via` are safe to expose, `token` is not.
  */
-export function blobCredential(): { name: string; token: string } | null {
+export interface BlobCredential {
+  mode: "oidc" | "read-write-token";
+  /** Which environment variable this was derived from. Never the value. */
+  via: string;
+  /** Present only for a read-write token; OIDC is resolved inside the SDK. */
+  token?: string;
+}
+
+export function blobCredential(): BlobCredential | null {
   const exact = process.env.BLOB_READ_WRITE_TOKEN;
-  if (exact) return { name: "BLOB_READ_WRITE_TOKEN", token: exact };
+  if (exact) {
+    return { mode: "read-write-token", via: "BLOB_READ_WRITE_TOKEN", token: exact };
+  }
   for (const [name, value] of Object.entries(process.env)) {
     if (!value) continue;
     if (!name.endsWith("READ_WRITE_TOKEN")) continue;
     if (!value.startsWith("vercel_blob_rw_")) continue;
-    return { name, token: value };
+    return { mode: "read-write-token", via: name, token: value };
+  }
+  // OIDC needs both halves. The store id alone is not a credential, and an
+  // OIDC token alone has no store to address.
+  if (process.env.BLOB_STORE_ID && process.env.VERCEL_OIDC_TOKEN) {
+    return { mode: "oidc", via: "BLOB_STORE_ID + VERCEL_OIDC_TOKEN" };
   }
   return null;
 }
 
 /**
- * Names — never values — of every token-shaped variable in the environment.
- * Purely diagnostic: when the store reads as unconfigured, this is what
- * distinguishes "the token is not here at all" (redeploy needed) from "it is
- * here under a name I rejected" (a bug in blobCredential).
+ * What the environment offers, as names and booleans only. Purely diagnostic:
+ * when the store reads as unconfigured this is what separates "nothing is
+ * attached" from "something is attached that this code did not recognise".
  */
-export function blobTokenVarNames(): string[] {
-  return Object.keys(process.env).filter((n) => n.endsWith("READ_WRITE_TOKEN"));
+export function blobEnvSummary(): {
+  tokenVars: string[];
+  storeId: boolean;
+  oidc: boolean;
+} {
+  return {
+    tokenVars: Object.keys(process.env).filter((n) =>
+      n.endsWith("READ_WRITE_TOKEN"),
+    ),
+    storeId: Boolean(process.env.BLOB_STORE_ID),
+    oidc: Boolean(process.env.VERCEL_OIDC_TOKEN),
+  };
 }
 
 export function backend(): Backend {
@@ -113,7 +147,12 @@ export function backend(): Backend {
   return "none";
 }
 
-/** The SDK reads BLOB_READ_WRITE_TOKEN itself; under any other name, pass it. */
+/**
+ * The token to hand the SDK, or undefined to let it resolve OIDC itself.
+ * `token: undefined` is not the same as omitting the option only in that the
+ * SDK treats a falsy token as "not supplied" and falls through to OIDC — which
+ * is exactly what the OIDC mode wants.
+ */
 function blobToken(): string | undefined {
   return blobCredential()?.token;
 }

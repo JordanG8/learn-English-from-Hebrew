@@ -48,7 +48,7 @@ Two backends, chosen at runtime by `lib/voice/store.ts`:
 
 | | When | Where clips land | Lives for |
 |---|---|---|---|
-| **Blob** | `BLOB_READ_WRITE_TOKEN` is set — i.e. production | Vercel Blob, `voice/<id>.<ext>` | Until deleted |
+| **Blob** | a blob credential is present — i.e. production | Vercel Blob, `voice/<id>.<ext>` | Until deleted |
 | **Filesystem** | local `npm run dev` | `public/voice/<id>.<ext>` | It is the repo |
 
 In production the filesystem is read-only and thrown away at the end of each
@@ -62,13 +62,25 @@ missing manifest means "nothing is recorded", which degrades to TTS.
 ### Setting up the blob store (one time)
 
 1. Vercel dashboard → the project → **Storage** → **Create** → **Blob**.
-2. Connect it to `learn-english-from-hebrew`. Vercel adds
-   `BLOB_READ_WRITE_TOKEN` to the project's environment variables itself.
-3. Redeploy. Environment variables are read at runtime, but an existing
-   deployment will not see a newly added one until it is redeployed.
+2. Connect it to `learn-english-from-hebrew`, with **Production** ticked.
+3. Redeploy, so a deployment exists that was built with the store attached.
 
-Without a blob store the deployed studio says so on screen and refuses to
-record, rather than pretending to save.
+**There is no token to copy.** Connecting a store injects `BLOB_STORE_ID` and,
+because the project has OIDC enabled, a short-lived `VERCEL_OIDC_TOKEN` per
+deployment. The SDK exchanges those two for access on each call. Nothing to
+rotate, nothing to leak, nothing in the repo.
+
+A `BLOB_READ_WRITE_TOKEN` (or `<PREFIX>_READ_WRITE_TOKEN`) is still honoured if
+one exists — an older integration or a hand-made token — and takes precedence.
+You do not need to create one.
+
+If the studio reports no storage, `GET /api/voice/manifest` says which
+mechanism was found under `storage` — `mode`, the variables it came from, and
+whether a store id and an OIDC token are present at all. Names and booleans
+only; it never returns a secret.
+
+Without a store the deployed studio says so on screen and refuses to record,
+rather than pretending to save.
 
 ### Setting the studio passcode (do this before recording in production)
 

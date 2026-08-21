@@ -14,7 +14,7 @@ import { NextResponse } from "next/server";
 import {
   backend,
   blobCredential,
-  blobTokenVarNames,
+  blobEnvSummary,
   listClips,
 } from "@/lib/voice/store";
 import { passcodeRequired } from "@/lib/voice/guard";
@@ -41,8 +41,9 @@ export async function GET() {
   return NextResponse.json(
     {
       storage: {
-        tokenVar: credential?.name ?? null,
-        tokenVarsSeen: blobTokenVarNames(),
+        mode: credential?.mode ?? null,
+        via: credential?.via ?? null,
+        env: blobEnvSummary(),
       },
       // Clips for ids this build no longer knows about are kept in storage
       // (deleting someone's recording on a content edit would be rude) but
