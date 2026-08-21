@@ -20,6 +20,7 @@ import {
   type VisitorVerdict,
 } from "./visitor";
 import { hasSeenLocally } from "./progress";
+import { initVoice } from "./voice";
 import { TUTORIAL_SKIP_REVEAL_DELAY_MS } from "./pedagogy";
 
 export interface VisitorApi extends VisitorVerdict {
@@ -51,6 +52,10 @@ function VisitorProvider({
   useEffect(() => {
     setLocalSeen(hasSeenLocally());
     setClientReady(true);
+    // Warm the recorded-voice index once per session. Until it resolves,
+    // hasClip() answers false and audio falls back to TTS — which is exactly
+    // the behaviour we want on a slow first paint.
+    void initVoice();
   }, []);
 
   const value = useMemo<VisitorApi>(() => {

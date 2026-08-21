@@ -38,4 +38,23 @@ npm run dev
 npm run typecheck
 ```
 
-See `docs/` for the research basis and the architecture notes.
+### Recording the voice
+
+The app ships with a synthetic voice and is meant to be re-voiced by a human —
+`/record` is the studio for that. It reads the script out of the curriculum
+(letter names, letter sounds, every word, the Hebrew narration of the
+walkthrough, the praise lines), prompts one line at a time, and saves each take
+straight into the browser, where the app plays it back immediately.
+
+```bash
+npm run dev            # then open http://localhost:3000/record
+npm run audio:manifest # only if you edit public/audio by hand
+```
+
+When a session is done, "ייצוא חבילת קול" downloads a zip; unpack it into
+`public/` so the files land in `public/audio/` next to `manifest.json`, and
+commit them. From then on every child hears the recording, and anything not yet
+recorded quietly falls back to the browser's speech synthesis.
+
+See `docs/` for the research basis and the architecture notes — the voice
+pipeline is architecture §9.

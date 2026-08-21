@@ -36,7 +36,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Lesson, TutorialStep } from "@/lib/types";
-import { playSfx, primeAudio, say } from "@/lib/audio";
+import { hasHeVoice, playSfx, primeAudio, say, sayHe } from "@/lib/audio";
 import { BigButton } from "@/components/ui/kit";
 
 interface Box {
@@ -105,9 +105,20 @@ export function Walkthrough({
     return () => cancelAnimationFrame(raf);
   }, [step]);
 
+  /*
+   * Rule 3 says every instruction carries three channels. On this screen the
+   * child cannot read English and may not read Hebrew fluently either, so the
+   * narrator is the channel that does the work: the Hebrew line on the card is
+   * READ ALOUD, in a recorded human voice, the moment the step appears.
+   *
+   * It waits out the step's own cue (a chord, a letter name) rather than
+   * talking over it, and there is no synthesiser fallback — see sayHe.
+   */
   useEffect(() => {
     primeAudio();
     if (step?.say) say(step.say);
+    const t = setTimeout(() => sayHe(step?.promptHe), step?.say ? 700 : 250);
+    return () => clearTimeout(t);
   }, [step]);
 
   const next = useCallback(() => {
@@ -242,6 +253,21 @@ export function Walkthrough({
         }
       >
         <p className="text-center text-xl font-bold leading-relaxed">{step.promptHe}</p>
+
+        {/* Say it again. Only appears when there is a recording to replay —
+            a speaker button that does nothing is worse than no button. */}
+        {hasHeVoice(step.promptHe) ? (
+          <div className="mt-3 flex justify-center">
+            <button
+              type="button"
+              onClick={() => sayHe(step.promptHe)}
+              aria-label="להשמיע שוב"
+              className="grid h-16 w-16 place-items-center rounded-full border-[3px] border-brand-soft bg-card text-3xl"
+            >
+              <span aria-hidden>🔊</span>
+            </button>
+          </div>
+        ) : null}
 
         {/* Progress dots — three redundant channels: position, count, label. */}
         <p className="mt-3 text-center text-sm text-ink-soft">

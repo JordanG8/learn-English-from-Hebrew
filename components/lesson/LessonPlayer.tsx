@@ -29,7 +29,7 @@ import { planMixedReview, nextLesson } from "@/lib/srs";
 import { buildReviewLesson, skillsForStep, LESSONS } from "@/lib/curriculum";
 import { starsFor, praise, encouragement, revealLine, completionHeadlineHe } from "@/lib/reward";
 import type { Stars } from "@/lib/reward";
-import { playSfx } from "@/lib/audio";
+import { playSfx, sayHe } from "@/lib/audio";
 import {
   BigButton,
   Confetti,
@@ -96,6 +96,19 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
     shownAt.current = Date.now();
   }, []);
 
+  /*
+   * The praise, the nudge and the reveal are all SPOKEN when a recording of
+   * that exact line exists — a child who is still decoding Hebrew script gets
+   * the encouragement in the channel they actually read at speed. Delayed a
+   * beat so the correct/wrong chord lands first, and driven off `message` so
+   * there is one place that speaks rather than three.
+   */
+  useEffect(() => {
+    if (!message) return;
+    const t = setTimeout(() => sayHe(message), 320);
+    return () => clearTimeout(t);
+  }, [message]);
+
   /* --- Grading ----------------------------------------------------- */
   const onAnswer = useCallback(
     (correct: boolean) => {
@@ -149,6 +162,13 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
       }),
     [wrongTotal, steps.length],
   );
+
+  // The finish line says the same warm thing out loud that it says on screen.
+  useEffect(() => {
+    if (phase !== "done") return;
+    const t = setTimeout(() => sayHe(completionHeadlineHe(stars)), 800);
+    return () => clearTimeout(t);
+  }, [phase, stars]);
 
   useEffect(() => {
     if (!lesson || steps.length === 0) return;

@@ -423,10 +423,13 @@ Honest list of what is not built, or is built differently from
    word list, so it cannot inject text, but a determined child could still
    claim to know every word in the bank. The consequence is only that chat gets
    harder than it should be for them.
-7. **Audio depends on the browser's TTS.** Letter *sounds* are approximated
-   with crude English syllables ("buh", "ss") because TTS cannot read IPA, and
+7. **Audio falls back to the browser's TTS.** Recorded human clips are the
+   good path (§9) and cover any cue that has been recorded; anything not yet
+   recorded still goes to TTS, where letter *sounds* are approximated with
+   crude English syllables ("buh", "ss") because TTS cannot read IPA, and
    quality varies by device. Everything degrades to silence with the Hebrew
-   text instruction intact. Recorded audio would be better.
+   text instruction intact. The gap is now "the pack is incomplete", not "the
+   voice is synthetic".
 8. **`components/keyboard/` styling and phone degradation are not ours.** The
    keyboard's focus-tile mode on narrow screens is documented in its README and
    trusted; it has not been exercised on a real phone here.
@@ -434,3 +437,69 @@ Honest list of what is not built, or is built differently from
    letters mastered *with* the 7-day retention window. That is realistically
    weeks of practice. If play-testing shows children never reach it, the single
    value to change is `CHAT_UNLOCK_LETTER_FRACTION`.
+
+---
+
+## 9. The recorded voice
+
+TTS was the weakest part of the product: it turns the phoneme /b/ into the
+word "buh", it has no Hebrew voice worth playing to a child, and on a school
+tablet it may not exist at all. The answer is a person reading the script, and
+three modules that make that a twenty-minute job rather than a project.
+
+### The script is derived, not written
+
+`lib/voice-script.ts` builds the full list of clips from the curriculum
+itself: every letter name, every distinct phoneme (C and K share one recording
+because they are one sound), every word in the bank plus every letter's example
+word, the Hebrew narration of every spotlight step, the praise/nudge/reveal
+lines, and — marked optional — every Hebrew instruction inside a lesson. Add a
+letter or a word and the script grows on its own.
+
+An id is a filename stem and must be derivable from a cue at play time without
+consulting the array:
+
+| cue | clip id |
+| --- | --- |
+| `letter-name:A` | `letter-name-A` |
+| `letter-sound:buh` | `letter-sound-buh` |
+| `word:APPLE` | `word-APPLE` |
+| a tutorial step | `narration-<step id>` |
+| any other Hebrew line | looked up **by its own text** (`heClipId`) |
+
+Hebrew is keyed by text on purpose: screens already hold the sentence, and an
+id passed alongside it would be a second thing to keep in sync.
+
+### Two places a clip can live
+
+`lib/voice.ts` resolves a cue against, in order:
+
+1. **IndexedDB on this device** — where `/record` writes. The voice is audible
+   in the real app one second after it is recorded, with no build step.
+2. **`public/audio/<id>.<ext>`**, listed in `public/audio/manifest.json` — the
+   pack shipped to everyone.
+
+A local take always beats the shipped one, so re-recording is immediate.
+Neither existing is not an error: English falls back to TTS, Hebrew falls back
+to silence, and the on-screen text is the channel that never fails (rule 3).
+`hasClip` is synchronous because `say()` is called from click handlers that
+cannot await — availability comes from a Set warmed once at startup.
+
+### The studio
+
+`/record` (`components/studio/RecorderStudio.tsx`) is a teleprompter, not a
+table: one prompt at a time, the exact text to read, a Hebrew direction on how
+to read it, a level meter, and space bar to start and stop. It saves each take
+as it is made, tracks coverage per group, and exports a zip that unpacks
+straight into `public/`. `lib/zip.ts` writes that archive in about a hundred
+lines (STORE only — audio is already compressed), which is why the app still
+has no dependency that exists for a tool the child never opens.
+
+### Where it is heard
+
+`lib/audio.ts` gained one function and one argument: `speakEn(text, rate,
+clipId)` plays the recording when there is one, and `sayHe(text)` plays Hebrew
+with no synthesiser fallback by design. The walkthrough narrates each step as
+it appears (and offers a replay button only when a recording exists), the
+lesson player speaks its praise and nudges, and the letter/word steps speak in
+the recorded voice wherever they used to speak in the synthetic one.

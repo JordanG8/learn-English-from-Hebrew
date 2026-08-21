@@ -50,7 +50,7 @@ export function rollSurprise(random: () => number = Math.random): boolean {
 
 /** Praise for a correct answer. Process praise ("you looked carefully"),
  *  not person praise ("you're so smart") — Mueller & Dweck 1998. */
-const PRAISE_HE: readonly string[] = [
+export const PRAISE_HE: readonly string[] = [
   "יפה מאוד!",
   "בדיוק!",
   "כל הכבוד, מצאת!",
@@ -62,7 +62,7 @@ const PRAISE_HE: readonly string[] = [
 ];
 
 /** Nudges for a wrong answer. None of them contains the word "טעות". */
-const NUDGE_HE: readonly string[] = [
+export const NUDGE_HE: readonly string[] = [
   "כמעט! ננסה שוב",
   "לא נורא, בוא ננסה עוד פעם",
   "עוד ניסיון קטן",
@@ -71,7 +71,7 @@ const NUDGE_HE: readonly string[] = [
 ];
 
 /** Shown when the app gives the answer away after MAX_ATTEMPTS_PER_STEP. */
-const REVEAL_HE: readonly string[] = [
+export const REVEAL_HE: readonly string[] = [
   "הנה, זה כאן — עכשיו תנסה",
   "אני אראה לך, ואז תעשה אתי",
 ];

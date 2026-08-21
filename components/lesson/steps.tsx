@@ -26,7 +26,12 @@ import type {
 } from "@/lib/types";
 import { KeyboardSurface } from "@/lib/keyboard-adapter";
 import { getLetter } from "@/lib/curriculum";
-import { playSfx, say, speakEn } from "@/lib/audio";
+import { playSfx, say, sayHe, speakEn } from "@/lib/audio";
+import {
+  letterNameClipId,
+  letterSoundClipId,
+  wordClipId,
+} from "@/lib/voice-script";
 import { BigButton, Card } from "@/components/ui/kit";
 import { tourAttr } from "@/lib/tour";
 import type { Lang } from "@/lib/types";
@@ -158,8 +163,14 @@ export function LetterSoundView({
   const data = getLetter(step.letter);
 
   const play = useCallback(() => {
-    if (step.mode === "name") speakEn(data?.nameEn ?? step.letter, 0.7);
-    else speakEn(data?.soundSpeak ?? step.letter, 0.6);
+    // The recorded take is the whole point of this step: a synthesised
+    // phoneme is the thing children were mishearing.
+    if (step.mode === "name") {
+      speakEn(data?.nameEn ?? step.letter, 0.7, letterNameClipId(step.letter));
+    } else {
+      const sound = data?.soundSpeak ?? step.letter;
+      speakEn(sound, 0.6, letterSoundClipId(sound));
+    }
   }, [step.mode, step.letter, data]);
 
   useEffect(() => {
@@ -367,7 +378,7 @@ export function BuildWordView({
             doneRef.current = true;
             setDone(true);
             playSfx("celebrate");
-            speakEn(step.word.toLowerCase(), 0.7);
+            speakEn(step.word.toLowerCase(), 0.7, wordClipId(step.word));
           }
           return next;
         });
@@ -433,7 +444,13 @@ export function BuildWordView({
         ) : null}
         <button
           type="button"
-          onClick={() => speakEn(targetData?.nameEn ?? step.word, 0.7)}
+          onClick={() =>
+            speakEn(
+              targetData?.nameEn ?? step.word,
+              0.7,
+              letterNameClipId(targetData?.letter ?? step.word),
+            )
+          }
           aria-label="השמע את האות"
           className="grid h-16 w-16 place-items-center rounded-full border-[3px] border-brand-soft bg-card text-3xl"
         >
@@ -469,9 +486,15 @@ export function TutorialCardView({
   onAdvance,
 }: StepRenderProps & { step: TutorialStep }) {
   useEffect(() => {
+    // The cue first, then the Hebrew voice reading the card itself — in that
+    // order, so a celebration chord does not talk over the narrator.
     const t = setTimeout(() => say(step.say), 300);
-    return () => clearTimeout(t);
-  }, [step.say]);
+    const narration = setTimeout(() => sayHe(step.promptHe), 900);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(narration);
+    };
+  }, [step.say, step.promptHe]);
 
   return (
     <div className="flex flex-1 flex-col justify-between gap-6 py-4">

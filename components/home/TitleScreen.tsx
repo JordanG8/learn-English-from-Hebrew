@@ -75,8 +75,14 @@ export function TitleScreen() {
           </span>
           <span>{started ? "ממשיכים" : "מתחילים"}</span>
         </button>
+        {/* The credit line, and next to it the one door for grown-ups: the
+            recording studio. Deliberately the smallest text on the screen —
+            it is not a second thing to tap, it is a footnote. */}
         <p className="text-center text-sm text-ink-soft">
-          <span className="ltr">Jordan Goren</span> · <span className="ltr">Claude</span>
+          <span className="ltr">Jordan Goren</span> · <span className="ltr">Claude</span> ·{" "}
+          <a href="/record" className="underline">
+            🎙️ אולפן
+          </a>
         </p>
       </div>
     </main>
