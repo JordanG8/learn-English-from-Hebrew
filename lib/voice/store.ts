@@ -112,10 +112,14 @@ export function blobCredential(): BlobCredential | null {
     if (!value.startsWith("vercel_blob_rw_")) continue;
     return { mode: "read-write-token", via: name, token: value };
   }
-  // OIDC needs both halves. The store id alone is not a credential, and an
-  // OIDC token alone has no store to address.
-  if (process.env.BLOB_STORE_ID && process.env.VERCEL_OIDC_TOKEN) {
-    return { mode: "oidc", via: "BLOB_STORE_ID + VERCEL_OIDC_TOKEN" };
+  // A store id is the whole of what this process can see. The OIDC token
+  // itself is NOT a process variable in a serverless function — it arrives per
+  // request and is refreshed by @vercel/oidc inside the SDK — so checking
+  // `process.env.VERCEL_OIDC_TOKEN` here reports false on a perfectly working
+  // deployment. Presence of the store id is the signal; if the exchange then
+  // fails, the call fails loudly and the manifest reports it.
+  if (process.env.BLOB_STORE_ID) {
+    return { mode: "oidc", via: "BLOB_STORE_ID" };
   }
   return null;
 }
@@ -128,14 +132,12 @@ export function blobCredential(): BlobCredential | null {
 export function blobEnvSummary(): {
   tokenVars: string[];
   storeId: boolean;
-  oidc: boolean;
 } {
   return {
     tokenVars: Object.keys(process.env).filter((n) =>
       n.endsWith("READ_WRITE_TOKEN"),
     ),
     storeId: Boolean(process.env.BLOB_STORE_ID),
-    oidc: Boolean(process.env.VERCEL_OIDC_TOKEN),
   };
 }
 

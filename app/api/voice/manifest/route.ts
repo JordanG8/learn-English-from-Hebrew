@@ -28,9 +28,13 @@ export async function GET() {
   let error: string | null = null;
   try {
     clips = await listClips();
-  } catch {
-    // A misconfigured store must not silence the app; it degrades to TTS.
-    error = "store-unreachable";
+  } catch (err) {
+    // A misconfigured store must not silence the app; it degrades to TTS. The
+    // message is kept because "the credential does not work" and "there is no
+    // credential" need different fixes, and the SDK says which it is. Blob
+    // errors name mechanisms, not secrets.
+    error =
+      err instanceof Error ? err.message.slice(0, 300) : "store-unreachable";
   }
 
   const kind = backend();
