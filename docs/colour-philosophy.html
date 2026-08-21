@@ -1,0 +1,656 @@
+<title>Loud Where It Counts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@500;700;900&family=Assistant:wght@400;600;800&family=IBM+Plex+Mono:wght@400;600&display=swap">
+
+<style>
+  :root {
+    --ground: #eef2f9;
+    --surface: #ffffff;
+    --surface-2: #f7f9fd;
+    --ink: #151c2b;
+    --ink-muted: #545c6c;
+    --ink-faint: #7c8496;
+    --line: #d9e0ed;
+    --accent: #3560d8;
+    --accent-quiet: #e6ecfd;
+
+    --display: "Frank Ruhl Libre", Georgia, "Times New Roman", serif;
+    --body: "Assistant", ui-sans-serif, system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+    --step--1: 0.83rem;
+    --step-0: 1.0625rem;
+    --step-1: 1.35rem;
+    --step-2: 1.8rem;
+    --step-3: 2.45rem;
+    --step-4: clamp(2.6rem, 7vw, 4.1rem);
+
+    --measure: 34rem;
+    --pad: clamp(1.15rem, 4vw, 2.75rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #10141d;
+      --surface: #182031;
+      --surface-2: #1e2739;
+      --ink: #e8edf7;
+      --ink-muted: #a6b0c4;
+      --ink-faint: #7d8799;
+      --line: #2b3549;
+      --accent: #89a8ff;
+      --accent-quiet: #1d2a49;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #10141d;
+    --surface: #182031;
+    --surface-2: #1e2739;
+    --ink: #e8edf7;
+    --ink-muted: #a6b0c4;
+    --ink-faint: #7d8799;
+    --line: #2b3549;
+    --accent: #89a8ff;
+    --accent-quiet: #1d2a49;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: var(--step-0);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Rule 6, live: the whole page can be drained of colour on request. */
+  .sheet { transition: filter .35s ease; }
+  body.is-grey .sheet { filter: grayscale(1); }
+
+  .wrap {
+    max-width: calc(var(--measure) + var(--pad) * 2);
+    margin-inline: auto;
+    padding-inline: var(--pad);
+  }
+  .wide { max-width: 60rem; margin-inline: auto; padding-inline: var(--pad); }
+
+  /* ---------- masthead ---------- */
+  header.masthead {
+    padding-block: clamp(3rem, 9vw, 6rem) clamp(2rem, 5vw, 3.5rem);
+    border-bottom: 1px solid var(--line);
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 1.4rem;
+  }
+  h1 {
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: var(--step-4);
+    line-height: 1.02;
+    letter-spacing: -.02em;
+    text-wrap: balance;
+    margin: 0 0 1.1rem;
+  }
+  .standfirst {
+    font-size: var(--step-1);
+    color: var(--ink-muted);
+    max-width: 30rem;
+    margin: 0;
+    text-wrap: pretty;
+  }
+
+  /* ---------- greyscale switch ---------- */
+  .switch-dock {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--ground) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  .switch-row {
+    display: flex;
+    align-items: center;
+    gap: .85rem;
+    padding-block: .7rem;
+    flex-wrap: wrap;
+  }
+  .switch {
+    display: inline-flex;
+    align-items: center;
+    gap: .6rem;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    font-weight: 600;
+    padding: .5rem .9rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+  }
+  .switch:hover { border-color: var(--accent); }
+  .switch:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .switch[aria-pressed="true"] { background: var(--accent-quiet); border-color: var(--accent); }
+  .lamp {
+    width: .7rem; height: .7rem; border-radius: 999px;
+    background: linear-gradient(135deg, #00625d, #7a2764);
+  }
+  .switch[aria-pressed="true"] .lamp { background: #7c8496; }
+  .switch-note { font-size: var(--step--1); color: var(--ink-faint); }
+
+  /* ---------- sections ---------- */
+  section { padding-block: clamp(2.5rem, 6vw, 4rem); }
+  h2 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: var(--step-2);
+    line-height: 1.15;
+    letter-spacing: -.01em;
+    text-wrap: balance;
+    margin: 0 0 1rem;
+  }
+  h3 {
+    font-family: var(--body);
+    font-weight: 800;
+    font-size: var(--step-0);
+    letter-spacing: .01em;
+    margin: 2rem 0 .5rem;
+  }
+  p { margin: 0 0 1.1rem; text-wrap: pretty; }
+  a { color: var(--accent); }
+  strong { font-weight: 800; }
+  code {
+    font-family: var(--mono);
+    font-size: .88em;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: .35rem;
+    padding: .08em .38em;
+  }
+  .he { direction: rtl; unicode-bidi: isolate; font-weight: 600; }
+
+  /* ---------- the thesis ---------- */
+  .thesis {
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding-block: clamp(2.5rem, 7vw, 4.5rem);
+  }
+  blockquote {
+    margin: 0;
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: var(--step-3);
+    line-height: 1.25;
+    letter-spacing: -.015em;
+    text-wrap: balance;
+  }
+  blockquote em { font-style: italic; color: var(--accent); }
+
+  /* ---------- rule cards ---------- */
+  .rules { display: flex; flex-direction: column; gap: 1.1rem; }
+  .rule {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: .9rem;
+    padding: clamp(1.1rem, 3vw, 1.75rem);
+  }
+  .rule-head {
+    display: flex;
+    align-items: baseline;
+    gap: .85rem;
+    margin-bottom: .6rem;
+  }
+  .rule-num {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: var(--step--1);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: .4rem;
+    padding: .1rem .45rem;
+    flex: none;
+  }
+  .rule-name {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: var(--step-1);
+    line-height: 1.2;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .rule p:last-child { margin-bottom: 0; }
+  .test {
+    margin-top: 1rem;
+    padding: .8rem 1rem;
+    background: var(--surface-2);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 .5rem .5rem 0;
+    font-size: var(--step--1);
+    line-height: 1.6;
+  }
+  .test b {
+    font-family: var(--mono);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    font-size: .82em;
+    color: var(--accent);
+    display: block;
+    margin-bottom: .2rem;
+  }
+  .test p { margin: 0; }
+
+  /* ---------- specimen sheet ---------- */
+  .specimen {
+    background: #ffffff;
+    color: #151c2b;
+    border: 1px solid #d9e0ed;
+    border-radius: 1rem;
+    padding: clamp(1.1rem, 3vw, 1.9rem);
+    overflow-x: auto;
+  }
+  .specimen-note {
+    font-family: var(--mono);
+    font-size: .78rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #7c8496;
+    margin: 0 0 1.2rem;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: var(--step--1); min-width: 30rem; }
+  th, td { text-align: start; padding: .6rem .5rem; border-bottom: 1px solid #e7ecf5; vertical-align: middle; }
+  th {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: .74rem;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: #7c8496;
+  }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .pairchip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: .55rem;
+    overflow: hidden;
+    border: 1px solid #d9e0ed;
+    font-family: var(--mono);
+    font-size: .78rem;
+    font-weight: 600;
+  }
+  .pairchip span { padding: .45rem .6rem; white-space: nowrap; }
+  .hue-name { font-family: var(--body); font-weight: 800; font-size: var(--step-0); }
+
+  /* ---------- wheel ---------- */
+  .ruler-legend { margin-top: 1.5rem; }
+  .ruler-frame { background: var(--surface); border: 1px solid var(--line); border-radius: 1rem; padding: clamp(.9rem, 2.5vw, 1.4rem); overflow-x: auto; }
+  .ruler-frame > svg { min-width: 34rem; }
+  .ruler { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-direction: column; gap: .55rem; margin: 0; padding: 0; list-style: none; font-size: var(--step--1); }
+  .legend li { display: flex; align-items: center; gap: .6rem; }
+  .dot { width: .8rem; height: .8rem; border-radius: 999px; flex: none; border: 1px solid rgba(0,0,0,.15); }
+
+  /* ---------- case study ---------- */
+  .case {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  @media (min-width: 40rem) { .case { grid-template-columns: 1fr 1fr; } }
+  .card-demo {
+    background: #ffffff;
+    border: 1px solid #d9e0ed;
+    border-radius: .9rem;
+    padding: 1.2rem;
+    text-align: center;
+  }
+  .card-demo .cap {
+    font-family: var(--mono);
+    font-size: .74rem;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    margin: 0 0 .9rem;
+  }
+  .cap-bad { color: #b3261e; }
+  .cap-good { color: #0f7a3d; }
+  .glyph { font-family: var(--display); font-weight: 900; font-size: 4.5rem; line-height: 1; margin: 0; }
+  .bar { height: .55rem; border-radius: 999px; background: #dfe6f2; margin: 1rem 0 .5rem; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 62%; background: #24ae56; border-radius: 999px; }
+  .demo-note { font-size: .8rem; color: #545c6c; margin: 0; }
+
+  /* ---------- where it went ---------- */
+  .where { background: var(--surface); border: 1px solid var(--line); border-radius: 1rem; padding: clamp(1rem, 3vw, 1.6rem); overflow-x: auto; }
+  .where table { min-width: 34rem; }
+  .where th, .where td { border-bottom: 1px solid var(--line); }
+  .where th { color: var(--ink-faint); }
+  .tag {
+    font-family: var(--mono);
+    font-size: .72rem;
+    font-weight: 600;
+    border: 1px solid var(--line);
+    border-radius: .35rem;
+    padding: .1rem .4rem;
+    color: var(--ink-muted);
+    white-space: nowrap;
+  }
+
+  /* ---------- checklist ---------- */
+  ol.check { counter-reset: c; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .7rem; }
+  ol.check li {
+    counter-increment: c;
+    display: grid;
+    grid-template-columns: 1.9rem minmax(0, 1fr);
+    gap: .7rem;
+    align-items: start;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: .6rem;
+    padding: .75rem .9rem;
+  }
+  ol.check li > span { min-width: 0; }
+  ol.check li::before {
+    content: counter(c);
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: .8rem;
+    color: var(--accent);
+    background: var(--accent-quiet);
+    border-radius: .35rem;
+    text-align: center;
+    padding: .15rem 0;
+  }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-block: 2.5rem 4rem;
+    color: var(--ink-faint);
+    font-size: var(--step--1);
+  }
+  footer p { margin: 0 0 .4rem; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+  }
+</style>
+
+<div class="sheet">
+
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow">אנגלית מההתחלה · design system · rules 6–9</p>
+    <h1>Loud where it counts, calm where it matters</h1>
+    <p class="standfirst">The app was built to be impossible to misread. That worked — and it produced white cards, on a white page, under a white header. This is how colour gets added without spending any of it.</p>
+  </div>
+</header>
+
+<div class="switch-dock">
+  <div class="wrap switch-row">
+    <button class="switch" id="grey" type="button" aria-pressed="false">
+      <span class="lamp" aria-hidden="true"></span>
+      <span id="greyLabel">Drain the colour</span>
+    </button>
+    <span class="switch-note">Rule&nbsp;6, on this page: nothing below should stop making sense.</span>
+  </div>
+</div>
+
+<section class="thesis">
+  <div class="wrap">
+    <blockquote>Colour is what makes a child want to come back. It is <em>never</em> what tells them what to do.</blockquote>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>What was already true</h2>
+    <p>Five rules govern every screen, and none of them are up for negotiation: one primary action per screen, 64px minimum touch targets, three redundant channels on every instruction — Hebrew text, an icon, and colour — Hebrew reading RTL with English isolated LTR, and nothing hidden behind a gesture.</p>
+    <p>A six-year-old cannot get that wrong. They also cannot get excited about it. The four rules below continue that list rather than replacing it, which is why they start at six.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>The four rules</h2>
+    <div class="rules">
+
+      <article class="rule">
+        <div class="rule-head">
+          <span class="rule-num">06</span>
+          <h3 class="rule-name">Colour is the fourth channel, never the first</h3>
+        </div>
+        <p>Rule 3 already spends colour as one of three redundant channels. Everything added on top is a fourth thing — decoration that reinforces, never a channel that carries.</p>
+        <p>A child here may be six, may not read Hebrew fluently yet, and may be colour-blind — roughly one boy in twelve. A colour they cannot decode must never be the difference between finishing a lesson and being stuck.</p>
+        <div class="test">
+          <b>The greyscale test</b>
+          <p>Put the screen behind <code>filter: grayscale(1)</code>. If a child could still finish the step, the colour is decoration and the change is safe. If not, meaning has leaked into hue and belongs back in text or shape. The switch at the top of this page runs the same test on this document.</p>
+        </div>
+      </article>
+
+      <article class="rule">
+        <div class="rule-head">
+          <span class="rule-num">07</span>
+          <h3 class="rule-name">One loud thing per screen</h3>
+        </div>
+        <p>Rule 1 makes the primary action the biggest thing on screen. Rule 7 makes it the most <em>saturated</em> thing too. The eye picks a winner by chroma before it picks one by area, so a screen with six colourful things has no primary action, whatever size the buttons are.</p>
+        <p>Everything that is not that one action lives in tints: soft surfaces carrying full-contrast ink.</p>
+        <div class="test">
+          <b>The squint test</b>
+          <p>Squint at the screen. The most colourful shape must be the thing to tap.</p>
+        </div>
+      </article>
+
+      <article class="rule">
+        <div class="rule-head">
+          <span class="rule-num">08</span>
+          <h3 class="rule-name">Hue is identity, not state</h3>
+        </div>
+        <p>Colour belongs to things that <strong>are</strong> something — this lesson, this letter, this word. A lesson keeps its hue for the life of the app, so moving from <span class="he">האות A</span> to <span class="he">האות B</span> visibly changes rooms, and the track reads as a journey instead of a spreadsheet.</p>
+        <p>Colour never belongs to things that <strong>happen</strong>: right, wrong, locked, done. Those keep the fixed semantic set — go, stop, star, warn — plus an icon plus a Hebrew sentence. No child is ever asked to learn what a colour means.</p>
+        <div class="test">
+          <b>The separation rule</b>
+          <p>Every identity hue sits at least 25° from every semantic hue. The wheel below shows why that number exists.</p>
+        </div>
+      </article>
+
+      <article class="rule">
+        <div class="rule-head">
+          <span class="rule-num">09</span>
+          <h3 class="rule-name">Paint the room, not the furniture</h3>
+        </div>
+        <p>Colour arrives as large, soft, low-contrast surfaces <em>behind</em> content: the page wash, a row tint, a card's top rim, a giant letter. Text, icons and borders stay full-contrast on near-white.</p>
+        <p>That is the whole trick for adding a lot of colour without touching legibility. A pale wash behind a paragraph costs nothing — body ink still reads at 15:1 on top of it. Tinting the paragraph itself would cost everything.</p>
+        <div class="test">
+          <b>The floor</b>
+          <p>Every text-on-background pair clears 4.5:1. The six identity pairs were measured before they were written down; they land between 6.2:1 and 7.5:1.</p>
+        </div>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wide">
+    <h2>The arc the state colours don’t use</h2>
+    <div class="ruler-frame">
+      <svg class="ruler" viewBox="0 0 900 172" role="img" aria-labelledby="rulerTitle rulerDesc">
+        <title id="rulerTitle">The hue axis, 0 to 360 degrees</title>
+        <desc id="rulerDesc">Four state hues — stop 25, warn 65, star 85 and go 150 degrees — each sit inside a hatched 50-degree exclusion band, and those bands cover the first half of the axis. The six identity hues at 190, 215, 240, 292, 315 and 340 degrees all fall in the clear second half, outside every band. Brand at 265 degrees is marked but not fenced, because it is the app's accent rather than a verdict.</desc>
+        <defs>
+          <linearGradient id="hues" x1="0" y1="0" x2="1" y2="0"><stop offset="0.0000%" stop-color="#fb93b4"/><stop offset="8.3333%" stop-color="#ff9685"/><stop offset="16.6667%" stop-color="#f4a25c"/><stop offset="25.0000%" stop-color="#d8b349"/><stop offset="33.3333%" stop-color="#adc35e"/><stop offset="41.6667%" stop-color="#76cf8a"/><stop offset="50.0000%" stop-color="#36d2ba"/><stop offset="58.3333%" stop-color="#22cde5"/><stop offset="66.6667%" stop-color="#60c2ff"/><stop offset="75.0000%" stop-color="#97b3ff"/><stop offset="83.3333%" stop-color="#c4a4fe"/><stop offset="91.6667%" stop-color="#e698df"/><stop offset="100.0000%" stop-color="#fb93b4"/></linearGradient>
+          <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="6" height="6" fill="#ffffff" fill-opacity=".74"/>
+            <line x1="0" y1="0" x2="0" y2="6" stroke="#b9c4d6" stroke-width="2.4"/>
+          </pattern>
+        </defs>
+        <rect x="30" y="54" width="840" height="34" rx="6" fill="url(#hues)"/>
+        <rect x="30.0" y="54" width="116.7" height="34" fill="url(#hatch)" stroke="#c9d2e2" stroke-dasharray="3 3"/><rect x="123.3" y="54" width="116.7" height="34" fill="url(#hatch)" stroke="#c9d2e2" stroke-dasharray="3 3"/><rect x="170.0" y="54" width="116.7" height="34" fill="url(#hatch)" stroke="#c9d2e2" stroke-dasharray="3 3"/><rect x="321.7" y="54" width="116.7" height="34" fill="url(#hatch)" stroke="#c9d2e2" stroke-dasharray="3 3"/>
+        <text x="30" y="104" font-family="IBM Plex Mono, monospace" font-size="11" fill="#7c8496">0°</text>
+        <text x="870" y="104" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="11" fill="#7c8496">360°</text>
+        <g><line x1="88.3" y1="22" x2="88.3" y2="88" stroke="#e64343" stroke-width="3"/><circle cx="88.3" cy="22" r="5" fill="#e64343"/><text x="88.3" y="16" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="#545c6c">stop 25°</text></g><g><line x1="181.7" y1="22" x2="181.7" y2="88" stroke="#e78c08" stroke-width="3"/><circle cx="181.7" cy="22" r="5" fill="#e78c08"/><text x="181.7" y="16" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="#545c6c">warn 65°</text></g><g><line x1="228.3" y1="42" x2="228.3" y2="88" stroke="#e9b10d" stroke-width="3"/><circle cx="228.3" cy="42" r="5" fill="#e9b10d"/><text x="228.3" y="36" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="#545c6c">star 85°</text></g><g><line x1="380.0" y1="22" x2="380.0" y2="88" stroke="#24ae56" stroke-width="3"/><circle cx="380.0" cy="22" r="5" fill="#24ae56"/><text x="380.0" y="16" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="#545c6c">go 150°</text></g>
+        <g><line x1="648.3" y1="22" x2="648.3" y2="88" stroke="#4170e9" stroke-width="2" stroke-dasharray="4 3"/><circle cx="648.3" cy="22" r="5" fill="none" stroke="#4170e9" stroke-width="2"/><text x="648.3" y="16" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="#4170e9">brand 265°</text></g>
+        <g><line x1="473.3" y1="54" x2="473.3" y2="108" stroke="#00625d" stroke-width="2"/><circle cx="473.3" cy="108" r="6.5" fill="#00625d"/><text x="485.3" y="112.5" text-anchor="start" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="#545c6c">teal 190°</text></g><g><line x1="531.7" y1="54" x2="531.7" y2="130" stroke="#005c7a" stroke-width="2"/><circle cx="531.7" cy="130" r="6.5" fill="#005c7a"/><text x="543.7" y="134.5" text-anchor="start" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="#545c6c">aqua 215°</text></g><g><line x1="590.0" y1="54" x2="590.0" y2="152" stroke="#00528e" stroke-width="2"/><circle cx="590.0" cy="152" r="6.5" fill="#00528e"/><text x="602.0" y="156.5" text-anchor="start" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="#545c6c">sky 240°</text></g><g><line x1="711.3" y1="54" x2="711.3" y2="108" stroke="#513a8f" stroke-width="2"/><circle cx="711.3" cy="108" r="6.5" fill="#513a8f"/><text x="723.3" y="112.5" text-anchor="start" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="#545c6c">violet 292°</text></g><g><line x1="765.0" y1="54" x2="765.0" y2="130" stroke="#68307e" stroke-width="2"/><circle cx="765.0" cy="130" r="6.5" fill="#68307e"/><text x="777.0" y="134.5" text-anchor="start" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="#545c6c">orchid 315°</text></g><g><line x1="823.3" y1="54" x2="823.3" y2="152" stroke="#7a2764" stroke-width="2"/><circle cx="823.3" cy="152" r="6.5" fill="#7a2764"/><text x="835.3" y="156.5" text-anchor="start" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="#545c6c">rose 340°</text></g>
+      </svg>
+      </div>
+      <div class="ruler-legend">
+        <p>The semantic colours already own part of the axis. An identity hue that lands near one of them stops being a name and starts being a verdict.</p>
+        <ul class="legend">
+          <li><span class="dot" style="background:#e64343"></span><span><strong>stop</strong> 25° — wrong answer</span></li>
+          <li><span class="dot" style="background:#e78c08"></span><span><strong>warn</strong> 65° — careful</span></li>
+          <li><span class="dot" style="background:#e9b10d"></span><span><strong>star</strong> 85° — earned</span></li>
+          <li><span class="dot" style="background:#24ae56"></span><span><strong>go</strong> 150° — correct, continue</span></li>
+          <li><span class="dot" style="background:#4170e9"></span><span><strong>brand</strong> 265° — the app's own accent</span></li>
+        </ul>
+        <p style="margin-top:1.1rem">Hatched bands are the 25° of daylight each state hue keeps on either side. Every identity hue falls outside all of them. Brand blue is marked but not fenced: it says <em>this is the app</em>, never <em>you were right</em>.</p>
+      </div>
+  </div>
+</section>
+
+<section>
+  <div class="wide">
+    <h2>How we found the number</h2>
+    <div class="case">
+      <div class="card-demo">
+        <p class="cap cap-bad">First pass — eight hues, leaf green included</p>
+        <p class="glyph" style="color:#0f5c2a">A</p>
+        <div class="bar"><i></i></div>
+        <p class="demo-note">Nothing had gone wrong technically. The lesson simply wore green above a green progress bar, and the screen read as <em>“A is correct”</em> — a verdict on a child who had not answered anything yet.</p>
+      </div>
+      <div class="card-demo">
+        <p class="cap cap-good">Shipped — six hues, none of them a state</p>
+        <p class="glyph" style="color:#005c7a">A</p>
+        <div class="bar"><i></i></div>
+        <p class="demo-note">The letter is aqua: nothing on the screen claims it. Green stays rare enough that when the progress bar moves, the movement is the only green thing that changed.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wide">
+    <h2>The six pairs</h2>
+    <div class="specimen">
+      <p class="specimen-note">Shown on white — the app runs <code style="background:#f7f9fd">color-scheme: light</code> only, so this is their real ground</p>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Hue</th>
+            <th scope="col">Pair</th>
+            <th scope="col">Angle</th>
+            <th scope="col">Ink on soft</th>
+            <th scope="col">Ink on white</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="hue-name">teal</td>
+            <td><span class="pairchip"><span style="background:#c2f8f3;color:#00625d">#c2f8f3</span><span style="background:#00625d;color:#fff">#00625d</span></span></td>
+            <td class="num">190°</td><td class="num">6.20:1</td><td class="num">7.24:1</td>
+          </tr>
+          <tr>
+            <td class="hue-name">aqua</td>
+            <td><span class="pairchip"><span style="background:#c2f5ff;color:#005c7a">#c2f5ff</span><span style="background:#005c7a;color:#fff">#005c7a</span></span></td>
+            <td class="num">215°</td><td class="num">6.33:1</td><td class="num">7.45:1</td>
+          </tr>
+          <tr>
+            <td class="hue-name">sky</td>
+            <td><span class="pairchip"><span style="background:#cbf1ff;color:#00528e">#cbf1ff</span><span style="background:#00528e;color:#fff">#00528e</span></span></td>
+            <td class="num">240°</td><td class="num">6.72:1</td><td class="num">8.04:1</td>
+          </tr>
+          <tr>
+            <td class="hue-name">violet</td>
+            <td><span class="pairchip"><span style="background:#ebe5ff;color:#513a8f">#ebe5ff</span><span style="background:#513a8f;color:#fff">#513a8f</span></span></td>
+            <td class="num">292°</td><td class="num">7.34:1</td><td class="num">8.95:1</td>
+          </tr>
+          <tr>
+            <td class="hue-name">orchid</td>
+            <td><span class="pairchip"><span style="background:#f9e1ff;color:#68307e">#f9e1ff</span><span style="background:#68307e;color:#fff">#68307e</span></span></td>
+            <td class="num">315°</td><td class="num">7.45:1</td><td class="num">9.07:1</td>
+          </tr>
+          <tr>
+            <td class="hue-name">rose</td>
+            <td><span class="pairchip"><span style="background:#ffdef7;color:#7a2764">#ffdef7</span><span style="background:#7a2764;color:#fff">#7a2764</span></span></td>
+            <td class="num">340°</td><td class="num">7.38:1</td><td class="num">9.12:1</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:1.2rem">A hue is never used alone. It ships as <code>--color-&lt;name&gt;-soft</code>, a surface, and <code>--color-&lt;name&gt;-ink</code>, the only thing allowed on it — chosen together, measured together. Components take a token; they never invent a colour. If you catch yourself writing <code>color: var(--tint)</code> on text, you want <code>--tint-ink</code>. If the pair you need doesn't exist, add a pair, never a hex.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wide">
+    <h2>Where the colour actually went</h2>
+    <div class="where">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Surface</th>
+            <th scope="col">Before</th>
+            <th scope="col">After</th>
+            <th scope="col">Rule</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Page background</td><td>flat near-white</td><td>two very pale washes, sky and rose</td><td><span class="tag">09</span></td></tr>
+          <tr><td>Lesson rows</td><td>white, identical</td><td>each wears its lesson's hue, with a ringed glyph badge</td><td><span class="tag">08</span></td></tr>
+          <tr><td>Locked rows</td><td>white, dimmed</td><td>hue, desaturated, still carrying 🔒</td><td><span class="tag">08</span></td></tr>
+          <tr><td>Cards</td><td>white slab</td><td>white, with a 6px rim in the ambient hue</td><td><span class="tag">09</span></td></tr>
+          <tr><td>Giant letter</td><td>near-black</td><td>the lesson's identity ink</td><td><span class="tag">08</span> <span class="tag">09</span></td></tr>
+          <tr><td>Star counter</td><td>white card</td><td>a star-tinted well</td><td><span class="tag">08</span></td></tr>
+          <tr><td>Primary action</td><td>green</td><td>unchanged — still the only saturated thing</td><td><span class="tag">07</span></td></tr>
+          <tr><td><strong>The keyboard</strong></td><td>neutral</td><td><strong>unchanged, deliberately</strong></td><td><span class="tag">below</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>The keyboard stays furniture</h3>
+    <p>The board is the one surface that gets no identity colour at all, and that is a rule rather than an oversight. It is a reference instrument a child is trying to memorise the shape of, so every coloured cap is a landmark competing with the one cap that matters — the highlighted key. Caps stay neutral, the highlight stays brand blue, and the finger-position colours remain the single exception, because they are a genuine teaching channel and they already carry a shape and a bilingual label alongside the colour.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Adding colour later</h2>
+    <ol class="check">
+      <li><span>Does it survive <code>filter: grayscale(1)</code>?</span></li>
+      <li><span>Is the primary action still the most saturated thing on the screen?</span></li>
+      <li><span>Is the hue describing what something <strong>is</strong>, never what <strong>happened</strong> — and at least 25° from every semantic hue?</span></li>
+      <li><span>Is the colour behind the content rather than on the text?</span></li>
+      <li><span>Is it a <code>soft</code>/<code>ink</code> pair from <code>:root</code>, measured at 4.5:1 or better?</span></li>
+      <li><span>Is it on the keyboard? Then no.</span></li>
+    </ol>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>Rules 1–9 and the tokens live in <code>app/globals.css</code>. Hue assignment is <code>lib/palette.ts</code>. The long form of this document is <code>docs/design-philosophy.md</code>.</p>
+    <p>Set in Frank Ruhl Libre and Assistant — the same face the app itself reads in.</p>
+  </div>
+</footer>
+
+</div>
+
+<script>
+  (function () {
+    var btn = document.getElementById('grey');
+    var label = document.getElementById('greyLabel');
+    btn.addEventListener('click', function () {
+      var on = document.body.classList.toggle('is-grey');
+      btn.setAttribute('aria-pressed', String(on));
+      label.textContent = on ? 'Bring the colour back' : 'Drain the colour';
+    });
+  })();
+</script>
