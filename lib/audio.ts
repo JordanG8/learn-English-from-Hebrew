@@ -181,6 +181,48 @@ function clipElement(): HTMLAudioElement | null {
  * recording is in progress, so "no clip" is not an error and must not be
  * louder or slower than the recorded path.
  */
+/**
+ * WHOSE TURN IT IS TO SPEAK.
+ *
+ * Every request to speak takes a ticket. Two things check it:
+ *
+ *  · The manifest race below, which resumes on a promise — by the time it
+ *    resolves the child may be two steps further on, and playing the line
+ *    they have left is worse than staying quiet.
+ *  · stopSpeech(), which screens call when they move on, so a clip cannot
+ *    outlive the card that asked for it. A three-word letter name usually
+ *    finished on its own; a sentence of narration did not, and carried on
+ *    talking over the next screen. That is the bug this counter exists for.
+ */
+let speechTicket = 0;
+
+/**
+ * Silence everything immediately: the recorded clip, the synthesiser, and any
+ * playback still waiting on the manifest. Screens call this when the step
+ * changes, so audio never belongs to a screen the child has left.
+ */
+export function stopSpeech(): void {
+  speechTicket += 1;
+  try {
+    if (clipEl) {
+      clipEl.pause();
+      // Dropping the source stops a download that is still in flight; without
+      // it a slow clip can start playing after the pause.
+      clipEl.removeAttribute("src");
+      clipEl.load();
+    }
+  } catch {
+    /* fail silent */
+  }
+  try {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+  } catch {
+    /* fail silent */
+  }
+}
+
 export function playLine(
   lineId: string,
   fallback?: { text: string; rate?: number } | null,
@@ -190,13 +232,19 @@ export function playLine(
     if (fallback) speakEn(fallback.text, fallback.rate ?? 0.75);
   };
 
+  const ticket = ++speechTicket;
+
   // THE RACE THAT MATTERS: the walkthrough asks to speak the moment it
   // mounts, which can be before the manifest fetch has resolved. Answering
   // "not recorded" then would give the first line the child ever hears the
   // robot voice — the exact thing this feature exists to remove. So when the
-  // list is not in yet, wait for it rather than guessing.
+  // list is not in yet, wait for it rather than guessing — but only if this
+  // is still the line being asked for when the list arrives.
   if (!voiceManifestReady()) {
-    void loadVoiceManifest().then(() => playLine(lineId, fallback));
+    void loadVoiceManifest().then(() => {
+      if (ticket !== speechTicket) return;
+      playLine(lineId, fallback);
+    });
     return;
   }
 
@@ -221,10 +269,16 @@ export function playLine(
     el.currentTime = 0;
     // A 404 (clip deleted between manifest load and playback) or a codec the
     // device cannot decode both land here — TTS covers the gap.
-    el.onerror = () => speakFallback();
+    el.onerror = () => {
+      if (ticket === speechTicket) speakFallback();
+    };
     const p = el.play();
     if (p && typeof p.catch === "function") {
-      p.catch(() => speakFallback());
+      p.catch(() => {
+        // An autoplay refusal or a source dropped by stopSpeech both land
+        // here; only the first deserves the fallback voice.
+        if (ticket === speechTicket) speakFallback();
+      });
     }
   } catch {
     speakFallback();
@@ -252,6 +306,56 @@ export function sayLetterSound(letter: string, rate = 0.6): void {
 /** An English word, recorded if possible. */
 export function sayWord(word: string, rate = 0.7): void {
   playLine(wordLineId(word), { text: word.toLowerCase(), rate });
+}
+
+/**
+ * EVERYTHING A TUTORIAL CARD SHOULD SAY, in the right order.
+ *
+ * A card has two possible sounds: the recorded Hebrew narration, and the cue
+ * the content itself asks for (`step.say`). Firing both — which is what the
+ * walkthrough used to do — means the second one replaces the first mid-word,
+ * because recorded speech is a single audio element by design. So:
+ *
+ *  · An `sfx:` cue is a synthesised tone on a different channel; it plays
+ *    alongside the narration and always has.
+ *  · A spoken cue (a letter, a word) is a SUBSTITUTE for narration, not a
+ *    companion: it plays only when this card has no recording of its own.
+ */
+export function sayCard(stepId: string, sayKey?: string): void {
+  if (muted) return;
+  const isSfx = sayKey?.startsWith("sfx:") ?? false;
+  if (sayKey && isSfx) playSfx(sayKey.slice(4) as Sfx);
+  const cue = sayKey && !isSfx ? sayKey : null;
+
+  if (!voiceManifestReady()) {
+    const ticket = speechTicket;
+    void loadVoiceManifest().then(() => {
+      if (ticket !== speechTicket) return;
+      sayCard(stepId, sayKey);
+    });
+    return;
+  }
+
+  if (!voiceUrl(narrationLineId(stepId))) {
+    if (cue) say(cue);
+    return;
+  }
+
+  sayNarration(stepId);
+  if (!cue) return;
+
+  // The cue is not decoration on these cards: every letter-intro card reads
+  // "this letter makes the sound X" and then makes it. So it waits its turn
+  // rather than being dropped or talked over — and it is abandoned if the
+  // child moves on first, which the ticket taken by the narration detects.
+  const ticket = speechTicket;
+  const el = clipElement();
+  if (!el) return;
+  const onEnded = () => {
+    el.removeEventListener("ended", onEnded);
+    if (ticket === speechTicket) say(cue);
+  };
+  el.addEventListener("ended", onEnded);
 }
 
 /**

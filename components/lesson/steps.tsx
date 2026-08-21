@@ -29,10 +29,11 @@ import { getLetter } from "@/lib/curriculum";
 import {
   playSfx,
   say,
+  sayCard,
   sayLetterName,
   sayLetterSound,
-  sayNarration,
   sayWord,
+  stopSpeech,
 } from "@/lib/audio";
 import { BigButton, Card } from "@/components/ui/kit";
 import { tourAttr } from "@/lib/tour";
@@ -175,7 +176,10 @@ export function LetterSoundView({
   useEffect(() => {
     // Auto-play once per step: the sound IS the question.
     const t = setTimeout(play, 350);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      stopSpeech();
+    };
   }, [play]);
 
   return (
@@ -479,14 +483,16 @@ export function TutorialCardView({
   onAdvance,
 }: StepRenderProps & { step: TutorialStep }) {
   useEffect(() => {
-    const t = setTimeout(() => {
-      // Narration first (the human reading the card), then whatever cue the
-      // content asked for. A tutorial card with no recording is silent, as it
-      // always was — see lib/voice/lines.ts.
-      sayNarration(step.id);
-      say(step.say);
-    }, 300);
-    return () => clearTimeout(t);
+    // The recorded human reading of this card, or the content's own cue when
+    // nobody has recorded it — never both at once, which used to cut the
+    // narration off after a word. See sayCard in lib/audio.ts.
+    const t = setTimeout(() => sayCard(step.id, step.say), 300);
+    return () => {
+      clearTimeout(t);
+      // Leaving the card silences it: a sentence of narration is longer than
+      // the time a child takes to tap on.
+      stopSpeech();
+    };
   }, [step.id, step.say]);
 
   return (

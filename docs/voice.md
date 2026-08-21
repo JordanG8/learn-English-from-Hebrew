@@ -144,9 +144,20 @@ public/voice/           committed clips + index.json
 ```
 
 Screens never name a file. They call `sayLetterName("B")`,
-`sayLetterSound("B")`, `sayWord("CAT")` or `sayNarration(stepId)`, and
+`sayLetterSound("B")`, `sayWord("CAT")` or — for a tutorial card, which may
+have both a narration and a cue of its own — `sayCard(stepId, step.say)`, and
 `lib/audio.ts` decides between a recording and the synthesiser. That is the
 seam: content authors and recording sessions can each move without the other.
+
+Two rules the player enforces, both learned the hard way:
+
+- **One voice at a time.** Recorded speech is a single audio element. A card
+  that fires its narration and its cue together loses the narration a word in,
+  so `sayCard` plays the cue *after* the narration ends, and drops it if the
+  child has already moved on.
+- **Audio never outlives its screen.** Screens call `stopSpeech()` when the
+  step changes. Without it a sentence of narration keeps talking over the next
+  card — the longer the line, the worse it is.
 
 ### Adding a new line
 
