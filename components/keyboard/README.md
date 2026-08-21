@@ -122,7 +122,10 @@ const plan = keysForText(step.word, "en");   // [{ cap, shift }, ...]
 2. **Match on `code`, never on `char`.** `char` depends on the active layout;
    `code` is the physical key.
 3. **`reveal` is the scaffold dial.** Start `true`, drop to `false` once the
-   skill's streak justifies it. `highlight` + `dim` is a weaker fade in between.
+   skill's streak justifies it. `highlight` + `dim` is a weaker fade in between: dimmed
+   caps drop to 50 % opacity and full greyscale, the same defocus treatment
+   the lesson screen applies to everything that is not the current task
+   (`.efh-defocus` in `app/globals.css`).
 4. **Highlight is also the phone layout.** See below — on a phone, `highlight`
    is what makes the keyboard usable at all, so never leave it empty on a
    press-key step.
