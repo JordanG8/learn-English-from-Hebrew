@@ -65,10 +65,11 @@ missing manifest means "nothing is recorded", which degrades to TTS.
 2. Connect it to `learn-english-from-hebrew`, with **Production** ticked.
 3. Redeploy, so a deployment exists that was built with the store attached.
 
-**There is no token to copy.** Connecting a store injects `BLOB_STORE_ID` and,
-because the project has OIDC enabled, a short-lived `VERCEL_OIDC_TOKEN` per
-deployment. The SDK exchanges those two for access on each call. Nothing to
-rotate, nothing to leak, nothing in the repo.
+**There is no token to copy.** Connecting a store injects `BLOB_STORE_ID`, and
+the project's OIDC federation supplies the matching short-lived token per
+request — not as an environment variable — which the SDK refreshes and
+exchanges for access on each call. Nothing to rotate, nothing to leak, nothing
+in the repo.
 
 A `BLOB_READ_WRITE_TOKEN` (or `<PREFIX>_READ_WRITE_TOKEN`) is still honoured if
 one exists — an older integration or a hand-made token — and takes precedence.

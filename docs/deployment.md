@@ -94,8 +94,8 @@ Blob**, because a lambda's filesystem is read-only. Create the store under
 **Production** ticked, and redeploy.
 
 **No token to manage.** Connecting a store injects `BLOB_STORE_ID`, and the
-project's OIDC federation supplies a short-lived `VERCEL_OIDC_TOKEN` per
-deployment; the SDK exchanges the pair for access. A long-lived
+project's OIDC federation supplies the matching short-lived token per request
+(not as an environment variable); the SDK exchanges the pair for access. A long-lived
 `BLOB_READ_WRITE_TOKEN` is honoured if present but is not required and not
 recommended.
 

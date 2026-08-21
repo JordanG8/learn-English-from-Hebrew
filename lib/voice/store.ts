@@ -76,11 +76,12 @@ export function validId(id: string): boolean {
  * written down here rather than assumed:
  *
  *  - OIDC (what connecting a store in the dashboard actually does today).
- *    Vercel injects `BLOB_STORE_ID` plus a short-lived `VERCEL_OIDC_TOKEN`
- *    per deployment, and NO long-lived secret. This is the better mechanism:
- *    nothing to rotate, nothing to leak, and it is what a correctly connected
- *    store looks like. The SDK resolves it on its own once a store id is
- *    present, so there is nothing to pass.
+ *    Vercel injects `BLOB_STORE_ID` and NO long-lived secret. The other half,
+ *    the OIDC token, is not an environment variable in a deployed function:
+ *    it arrives per request and `@vercel/oidc` refreshes it inside the SDK.
+ *    So a store id is the only half this process can test for, and there is
+ *    nothing to pass. This is the better mechanism — nothing to rotate,
+ *    nothing to leak — and it is what a correctly connected store looks like.
  *
  *  - A READ-WRITE TOKEN, created by hand or by an older integration, in
  *    `BLOB_READ_WRITE_TOKEN` or `<PREFIX>_READ_WRITE_TOKEN` — the name varies
