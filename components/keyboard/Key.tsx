@@ -71,8 +71,19 @@ export function Key({
 
   return (
     <div
-      className={tile ? "p-1" : "p-[3px]"}
-      style={tile ? undefined : { width: `calc(var(--u) * ${cap.width ?? 1})` }}
+      className={tile ? "p-1" : undefined}
+      style={
+        tile
+          ? undefined
+          : {
+              // Width is a share of the 15-unit row, so the board is always
+              // exactly as wide as its container — no scrolling, ever. Padding
+              // scales with the caps so a narrow screen does not spend its key
+              // area on gaps.
+              width: `calc(var(--u) * ${cap.width ?? 1})`,
+              padding: "var(--kp, 3px)",
+            }
+      }
     >
       <button
         type="button"
@@ -92,8 +103,9 @@ export function Key({
         onPointerCancel={onRelease}
         className={[
           "relative flex h-full w-full select-none flex-col items-center justify-center",
-          "rounded-xl border-2 font-bold",
-          tile ? "min-h-[76px] text-3xl" : "text-base",
+          "border-2 font-bold",
+          tile ? "rounded-xl" : "",
+          tile ? "min-h-[76px] text-3xl" : "",
           "transition-[transform,background-color,border-color,box-shadow] duration-[60ms] ease-out",
           pressed
             ? "-translate-y-0 scale-95 border-go bg-go text-white shadow-[0_0_0_5px_var(--color-go-soft)]"
@@ -104,13 +116,21 @@ export function Key({
                 : "border-brand-soft bg-card text-ink",
           "shadow-[0_3px_0_rgba(0,0,0,0.10)] active:shadow-none",
         ].join(" ")}
-        style={{ height: tile ? undefined : "var(--kh)", touchAction: "manipulation" }}
+        style={{
+          height: tile ? undefined : "var(--kh, 44px)",
+          // A fixed 12px radius eats a 22px cap alive; scale it with the key.
+          borderRadius: tile ? undefined : "calc(var(--kh, 44px) * 0.2)",
+          // Every legend below is sized in em, so one declaration keeps the
+          // whole cap readable at any scale.
+          fontSize: tile ? undefined : "calc(var(--kh, 44px) * 0.34)",
+          touchAction: "manipulation",
+        }}
       >
         {/* Finger colour band. Colour is one of three channels — the shape and
             the tooltip text carry the same information. */}
         {showFingers && (
           <span
-            className="pointer-events-none absolute inset-x-1 top-0 flex h-[6px] items-center justify-center rounded-b-md text-[7px] leading-none"
+            className="pointer-events-none absolute inset-x-[8%] top-0 flex h-[0.18em] min-h-[3px] items-center justify-center rounded-b-md text-[0.3em] leading-none"
             style={{ background: finger, color: fingerInk }}
             title={`${FINGER_LABELS[cap.finger].he} · ${FINGER_LABELS[cap.finger].en}`}
             aria-hidden="true"
@@ -120,7 +140,9 @@ export function Key({
         )}
 
         {isModifier || isSpace ? (
-          <span className="ltr text-sm font-bold opacity-80">{isSpace ? "␣" : cap.en.lower}</span>
+          <span className="ltr overflow-hidden text-[0.72em] font-bold leading-none opacity-80">
+            {isSpace ? "␣" : cap.en.lower}
+          </span>
         ) : showLegends ? (
           <span className="flex h-full w-full items-center justify-center">
             {/* English legend — top-left, exactly where it is silk-screened. */}
@@ -128,7 +150,7 @@ export function Key({
               className={[
                 "ltr absolute leading-none",
                 activeIsHe
-                  ? "left-1 top-1 text-[0.62em] opacity-45"
+                  ? "left-[0.15em] top-[0.1em] text-[0.62em] opacity-45"
                   : tile
                     ? "text-[1em]"
                     : "text-[1.35em]",
@@ -145,7 +167,7 @@ export function Key({
                     ? tile
                       ? "text-[1em]"
                       : "text-[1.35em]"
-                    : "bottom-1 right-1 text-[0.62em] opacity-45",
+                    : "bottom-[0.1em] right-[0.15em] text-[0.62em] opacity-45",
                 ].join(" ")}
               >
                 {heGlyph}
@@ -161,7 +183,7 @@ export function Key({
         {/* The physical bump under F and J, drawn where the child can feel it. */}
         {cap.homeAnchor && (
           <span
-            className="pointer-events-none absolute bottom-1 h-[3px] w-5 rounded-full bg-ink-soft"
+            className="pointer-events-none absolute bottom-[0.1em] h-[2px] w-[0.7em] rounded-full bg-ink-soft"
             aria-hidden="true"
           />
         )}

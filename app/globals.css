@@ -164,16 +164,46 @@ html, body {
 /* --- Walkthrough spotlight ---------------------------------------- */
 /* The dimming is done with a giant box-shadow on a transparent hole rather
    than four positioned panels — one element, no layout thrash on scroll. */
+/* The spotlit element itself is page content UNDERNEATH this overlay — it is
+   never covered, which is what keeps it at full colour and full strength.
+   This rule only draws the ring around it.
+
+   The surround used to be painted here as `box-shadow: 0 0 0 9999px`, which
+   never actually rendered: .efh-spotlight-ring animates box-shadow, and an
+   animation beats a declared value, so the scrim was overwritten by the pulse
+   on every frame and the walkthrough dimmed nothing at all. The surround now
+   lives on .efh-dimmer, where no animation can clobber it. */
 .efh-spotlight-hole {
   position: fixed;
   border-radius: 1.25rem;
-  box-shadow: 0 0 0 9999px oklch(0.24 0.03 260 / 0.72);
   outline: 5px solid var(--color-star);
   pointer-events: none;
   z-index: 70;
-  transition: all 260ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: top 260ms cubic-bezier(0.4, 0, 0.2, 1),
+              left 260ms cubic-bezier(0.4, 0, 0.2, 1),
+              width 260ms cubic-bezier(0.4, 0, 0.2, 1),
+              height 260ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .efh-spotlight-ring { animation: efh-pulse 1.4s ease-in-out infinite; }
+
+/* Everything around the spotlight: washed halfway back into the page and
+   drained of colour, so the one element the child has to touch is the only
+   thing on the screen still in colour. Rendered as the four rectangles around
+   the hole (Walkthrough.tsx) — a backdrop-filter cannot have a hole punched in
+   it, and four exact rects leave no seam.
+
+   These rects are also the tap blocker: pointer events stop here, so a stray
+   finger outside the spotlight cannot navigate away mid-tour.
+
+   If backdrop-filter is unsupported the wash still lands and the surround is
+   still visibly knocked back — only the desaturation is lost. */
+.efh-dimmer {
+  position: fixed;
+  z-index: 68;
+  background: color-mix(in oklch, var(--color-paper) 50%, transparent);
+  -webkit-backdrop-filter: grayscale(1);
+  backdrop-filter: grayscale(1);
+}
 .efh-coach {
   position: fixed;
   z-index: 72;

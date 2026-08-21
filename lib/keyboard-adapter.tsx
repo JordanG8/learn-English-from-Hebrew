@@ -15,9 +15,9 @@
  *   · `hint` → `reveal`. Hint on means the legends are printed (recognition);
  *     hint off means blank caps (recall). This is the scaffold dial, and it is
  *     the SRS that turns it down — see LessonPlayer.
- *   · `highlight` must never be empty on a press-key step: on a phone the
- *     keyboard degrades to focus tiles built FROM the highlight, so an empty
- *     highlight makes it unusable on the device most children will hold.
+ *   · `highlight` must never be empty on a press-key step: it is the only
+ *     thing telling the child which key the step is about. The board itself is
+ *     always shown in full, at whatever size fits the screen.
  */
 
 import { useCallback } from "react";
@@ -32,7 +32,7 @@ export interface KeyboardSurfaceProps {
   onLangChange?: (lang: Lang) => void;
   /** The layout this step needs. A mismatch makes the switch demand Alt+Shift. */
   requiredLang?: Lang | null;
-  /** Keys to light up. Also drives phone focus-tile mode — keep it non-empty. */
+  /** Keys to light up. The step's whole instruction — keep it non-empty. */
   highlight?: readonly KeyCode[];
   /** True = legends printed (recognition). False = blank caps (recall). */
   reveal?: boolean;

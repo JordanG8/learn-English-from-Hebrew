@@ -15,8 +15,11 @@
  *     an actual control and will not advance until the child touches that
  *     control. There is no "next" button to reflex-tap past it.
  *
- *  3. NOTHING ELSE IS TAPPABLE. The dimmer swallows every pointer event
- *     outside the spotlight, so a stray tap cannot navigate away mid-tour.
+ *  3. NOTHING ELSE IS TAPPABLE. The four dimmer rectangles around the
+ *     spotlight swallow every pointer event outside it, so a stray tap
+ *     cannot navigate away mid-tour. They also carry the grey-out: the
+ *     surround is washed back to half strength and desaturated, leaving the
+ *     spotlit control as the only thing on screen still in colour.
  *
  *  4. IT CANNOT DEAD-END. If a selector matches nothing (a screen changed, a
  *     control is off-screen), the step degrades to a full-screen card with an
@@ -144,8 +147,32 @@ export function Walkthrough({
       aria-modal="true"
       aria-label="הסבר קצר על המשחק"
     >
-      {/* Blocker: everything outside the spotlight is inert. */}
-      <div className="absolute inset-0" style={{ background: box ? "transparent" : "oklch(0.24 0.03 260 / 0.72)" }} />
+      {/*
+       * The surround: four rectangles that tile the screen around the
+       * spotlight, greyed and desaturated (.efh-dimmer). They are sized off
+       * the viewport edges rather than off window dimensions, so a resize
+       * needs no re-measure — only the hole moves.
+       *
+       * They are also the blocker: pointer events die here, so nothing
+       * outside the spotlight is tappable. With no target to point at, one
+       * rectangle covers the whole screen behind the card.
+       */}
+      {box ? (
+        <>
+          <div className="efh-dimmer" style={{ top: 0, left: 0, right: 0, height: Math.max(0, box.top) }} />
+          <div className="efh-dimmer" style={{ top: Math.max(0, box.top + box.height), left: 0, right: 0, bottom: 0 }} />
+          <div
+            className="efh-dimmer"
+            style={{ top: Math.max(0, box.top), left: 0, width: Math.max(0, box.left), height: box.height }}
+          />
+          <div
+            className="efh-dimmer"
+            style={{ top: Math.max(0, box.top), left: Math.max(0, box.left + box.width), right: 0, height: box.height }}
+          />
+        </>
+      ) : (
+        <div className="efh-dimmer" style={{ inset: 0 }} />
+      )}
 
       {box ? (
         <>
