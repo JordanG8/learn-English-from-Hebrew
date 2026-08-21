@@ -178,53 +178,39 @@ export const TUTORIAL_LESSON: Lesson = {
   skills: [metaSkill("tutorial")],
   requires: [],
   steps: [
+    /*
+     * Three steps, not six, and short ones. The walkthrough runs on the level
+     * select now — the screen it used to explain no longer exists — and the
+     * chat step went with it, because conversation mode is a pad on the road
+     * with a lock on it rather than a card that has to be read.
+     *
+     * There is deliberately no "here is the map" step. Its target was the
+     * whole canvas, so the spotlight covered the entire screen and the coach
+     * card had nowhere to sit that was not on top of it — which is what made
+     * the tour feel like it was hiding the thing it was pointing at. The road
+     * is the background of the welcome card instead; it needs no label.
+     */
     {
       id: "t-welcome",
       type: "tutorial",
       target: null,
       advanceOn: "next-button",
-      promptHe:
-        "היי! כאן לומדים את האותיות באנגלית ואת המקלדת. אני אראה לך איך משחקים — לוקח רגע.",
+      promptHe: "היי! זה המסלול שלך. כל אבן היא שיעור.",
       say: "sfx:celebrate",
-    },
-    {
-      id: "t-map",
-      type: "tutorial",
-      target: TOUR.map,
-      advanceOn: "tap-target",
-      promptHe: "זה המסלול שלך. כל עיגול הוא שיעור אחד. גע במסלול.",
     },
     {
       id: "t-stars",
       type: "tutorial",
       target: TOUR.stars,
       advanceOn: "tap-target",
-      promptHe:
-        "פה נאספים הכוכבים. מקבלים כוכב על כל שיעור שמסיימים — גם אם היו טעויות בדרך. גע בכוכבים.",
-    },
-    {
-      id: "t-chat",
-      type: "tutorial",
-      target: TOUR["chat-card"],
-      advanceOn: "tap-target",
-      promptHe:
-        "פה מדברים באנגלית עם חבר מהמחשב. זה נפתח אחרי שתכיר מספיק אותיות. גע בו כדי לראות.",
-    },
-    {
-      id: "t-replay",
-      type: "tutorial",
-      target: TOUR["replay-tutorial"],
-      advanceOn: "tap-target",
-      promptHe:
-        "אם תרצה שאראה לך את זה שוב — הכפתור הזה תמיד כאן. גע בו עכשיו כדי לזכור איפה הוא.",
+      promptHe: "פה נאספים הכוכבים. גע בהם.",
     },
     {
       id: "t-continue",
       type: "tutorial",
       target: TOUR.continue,
       advanceOn: "tap-target",
-      promptHe:
-        "וזה הכפתור הגדול. הוא תמיד לוקח אותך לדבר הבא. לחץ עליו ומתחילים!",
+      promptHe: "הכפתור הגדול מתחיל את השיעור. לחץ!",
     },
   ],
 };
