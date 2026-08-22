@@ -111,6 +111,23 @@ If the variable is not set:
 The passcode is compared in constant time and is never sent back to the
 browser.
 
+### A saved passcode also unlocks the whole track
+
+A device that has the studio passcode saved is an author's device, so the app
+stops gating levels on it: every level on the road is open, and conversation
+mode is too. That is how you play a lesson you wrote five minutes ago without
+first completing the twenty before it. The road shows a 🔓 chip next to the
+star counter while this is in effect, and the flat (no-WebGL) list shows the
+whole track instead of a window around where the child is.
+
+It lifts locks and nothing else — no lesson is marked complete, no stars are
+awarded, and the pencil still stands where the real progress put it, so the
+level-up cinematic stays honest. Nothing here is a security boundary either:
+it is a local flag (`lib/studio-unlock.ts`) reading the same localStorage key
+the studio writes, and every *write* to the voice store still needs the real
+passcode checked on the server. Pressing "שכח סיסמה" in the studio clears the
+key and puts the locks straight back.
+
 ## Committing the recordings
 
 The blob store is the fast path, not the final home: it can be deleted, it is
