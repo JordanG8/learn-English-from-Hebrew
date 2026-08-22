@@ -23,6 +23,7 @@
  */
 
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 import { ADV_CROUCH, ADV_FLIGHT, ADV_IMPACT, ADV_SETTLE, ADV_STILL } from "./timing";
 import { PAD_WINDOW_BACK, PAD_WINDOW_FORWARD, padWindowIndices } from "./window";
@@ -57,21 +58,26 @@ export interface WorldOptions {
 const C = {
   sky: 0xdff0fb,
   haze: 0xe8f3fb,
-  grass: 0x74b356,
-  grassDark: 0x3f7a33,
-  grassLight: 0x95cc68,
-  dirt: 0xd2a86f,
-  dirtEdge: 0xc09a68,
-  stone: 0xbfc4c9,
-  stoneDark: 0x9aa1a8,
+  grass: 0x75aa58,
+  grassDark: 0x416f38,
+  grassLight: 0x9bc875,
+  roadBed: 0x5e3b32,
+  brickA: 0x934f3a,
+  brickB: 0xa96146,
+  brickC: 0x743d31,
+  grout: 0xc8a27c,
+  stone: 0x9aa2a9,
+  stoneDark: 0x626c76,
+  stoneLight: 0xc7cdd2,
   trunk: 0x8a6444,
   leafA: 0x4f9d4a,
   leafB: 0x6fb95a,
   leafC: 0x3d8442,
-  wood: 0xc98f4e,
-  woodDark: 0x9c6a35,
+  wood: 0x9b6550,
+  woodDark: 0x6f4033,
   padLocked: 0x9ba3ad,
-  next: 0x2fbd63,
+  next: 0x173d4f,
+  number: 0x78e7ff,
   pencilBody: 0xf2c14b,
   pencilWood: 0xe8cfa3,
   graphite: 0x3a3a42,
@@ -133,8 +139,8 @@ function nodePosition(i: number): THREE.Vector3 {
 
 const labelCache = new Map<string, THREE.CanvasTexture>();
 
-function labelTexture(text: string, color: string): THREE.CanvasTexture {
-  const key = `${text}|${color}`;
+function labelTexture(text: string, color: string, outline = "#073b5c"): THREE.CanvasTexture {
+  const key = `${text}|${color}|${outline}`;
   const hit = labelCache.get(key);
   if (hit) return hit;
   const s = 128;
@@ -142,10 +148,17 @@ function labelTexture(text: string, color: string): THREE.CanvasTexture {
   cv.width = cv.height = s;
   const g = cv.getContext("2d")!;
   g.clearRect(0, 0, s, s);
-  g.fillStyle = color;
   g.font = `800 ${text.length > 2 ? 52 : 68}px system-ui, sans-serif`;
   g.textAlign = "center";
   g.textBaseline = "middle";
+  g.lineJoin = "round";
+  g.lineWidth = 15;
+  g.strokeStyle = outline;
+  g.shadowColor = "rgba(4, 34, 52, 0.35)";
+  g.shadowBlur = 5;
+  g.strokeText(text, s / 2, s / 2 + 4);
+  g.shadowBlur = 0;
+  g.fillStyle = color;
   g.fillText(text, s / 2, s / 2 + 4);
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -217,7 +230,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   } catch {
     throw new Error("no-webgl");
   }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.08;
@@ -319,7 +332,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   // ends inside the shot.
   const GROUND_W = 780;
   const GROUND_L = 780;
-  const ground = new THREE.PlaneGeometry(GROUND_W, GROUND_L, 90, 90);
+  const ground = new THREE.PlaneGeometry(GROUND_W, GROUND_L, 56, 56);
   ground.rotateX(-Math.PI / 2);
   {
     const pos = ground.attributes.position as THREE.BufferAttribute;
@@ -355,13 +368,12 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   scene.add(groundMesh);
 
   /* --- the road ------------------------------------------------------ */
-  function buildRoad(count: number): THREE.Mesh {
+  function buildRoad(count: number): THREE.Group {
     const pts: THREE.Vector3[] = [];
     for (let i = -2; i < count + 3; i++) pts.push(nodePosition(i));
     const curve = new THREE.CatmullRomCurve3(pts, false, "catmullrom", 0.4);
-    const steps = pts.length * 8;
+    const steps = pts.length * 7;
     const verts: number[] = [];
-    const uvs: number[] = [];
     const idx: number[] = [];
     const up = new THREE.Vector3(0, 1, 0);
     for (let i = 0; i <= steps; i++) {
@@ -369,14 +381,11 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       const p = curve.getPoint(t);
       const tan = curve.getTangent(t);
       const side = new THREE.Vector3().crossVectors(tan, up).normalize();
-      // A road that breathes: the width wobbles slightly so it reads as worn
-      // earth rather than an extruded rectangle.
-      const w = 2.1 + Math.sin(t * 40) * 0.16;
+      const w = 2.72;
       const l = p.clone().addScaledVector(side, -w);
       const r = p.clone().addScaledVector(side, w);
-      verts.push(l.x, terrainHeight(l.x, l.z) + 0.06, l.z);
-      verts.push(r.x, terrainHeight(r.x, r.z) + 0.06, r.z);
-      uvs.push(0, t * 20, 1, t * 20);
+      verts.push(l.x, terrainHeight(l.x, l.z) + 0.045, l.z);
+      verts.push(r.x, terrainHeight(r.x, r.z) + 0.045, r.z);
       if (i < steps) {
         const a = i * 2;
         idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
@@ -384,17 +393,139 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
-    g.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
     g.setIndex(idx);
     g.computeVertexNormals();
-    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: C.dirt }));
-    m.receiveShadow = !opts.reducedMotion;
-    return m;
+    const group = new THREE.Group();
+    const bed = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: C.grout }));
+    bed.receiveShadow = !opts.reducedMotion;
+    group.add(bed);
+
+    /* One box per brick, one draw call; adjacent columns form a running bond. */
+    const rowStep = 1.08;
+    const columns = 5;
+    const roadLength = curve.getLength();
+    const rows = Math.ceil(roadLength / rowStep);
+    const brickGeo = new THREE.BoxGeometry(0.94, 0.22, 1.28);
+    const brickMat = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true });
+    const bricks = new THREE.InstancedMesh(brickGeo, brickMat, rows * columns);
+    const dummy = new THREE.Object3D();
+    const cross = new THREE.Vector3();
+    const palette = [C.brickA, C.brickB, C.brickC].map((color) => new THREE.Color(color));
+    let instance = 0;
+    for (let row = 0; row < rows; row++) {
+      const t = rows <= 1 ? 0 : row / (rows - 1);
+      const p = curve.getPoint(t);
+      const tangent = curve.getTangent(t).normalize();
+      cross.crossVectors(tangent, up).normalize();
+      for (let column = 0; column < columns; column++) {
+        const across = (column - (columns - 1) / 2) * 1.03;
+        const bond = column % 2 === 0 ? 0 : rowStep * 0.5;
+        const x = p.x + cross.x * across + tangent.x * bond;
+        const z = p.z + cross.z * across + tangent.z * bond;
+        const noise = mulberry((row + 1) * 4099 + column * 131)();
+        dummy.position.set(x, terrainHeight(x, z) + 0.16 + noise * 0.045, z);
+        dummy.rotation.set(
+          (noise - 0.5) * 0.025,
+          Math.atan2(tangent.x, tangent.z) + (noise - 0.5) * 0.035,
+          (noise - 0.5) * 0.025,
+        );
+        dummy.scale.set(0.94 + noise * 0.08, 0.9 + noise * 0.22, 0.94 + noise * 0.07);
+        dummy.updateMatrix();
+        bricks.setMatrixAt(instance, dummy.matrix);
+        bricks.setColorAt(instance, palette[Math.min(2, Math.floor(noise * 3))]);
+        instance++;
+      }
+    }
+    bricks.count = instance;
+    bricks.instanceMatrix.needsUpdate = true;
+    if (bricks.instanceColor) bricks.instanceColor.needsUpdate = true;
+    bricks.castShadow = false;
+    bricks.receiveShadow = !opts.reducedMotion;
+    group.add(bricks);
+    return group;
   }
 
   /* --- scenery ------------------------------------------------------- */
   const scenery = new THREE.Group();
   scene.add(scenery);
+
+  /*
+   * Ten CC0 landmarks from Quaternius' Medieval Village Pack. They are local
+   * GLBs, loaded only when their chapter approaches the camera. Navigation and
+   * pads never wait for a model download, which keeps long jumps dependable.
+   */
+  const landmarkLayer = new THREE.Group();
+  scenery.add(landmarkLayer);
+  const landmarkLoader = new GLTFLoader();
+  const landmarkSpecs = [
+    { level: 5, file: "fantasy-house", side: -1, offset: 15, height: 7.5, turn: 0.5 },
+    { level: 15, file: "well", side: 1, offset: 11, height: 4.4, turn: -0.35 },
+    { level: 25, file: "market-stand", side: -1, offset: 13, height: 5.2, turn: 0.8 },
+    { level: 35, file: "mill", side: 1, offset: 17, height: 10.5, turn: -0.7 },
+    { level: 45, file: "bell-tower", side: -1, offset: 18, height: 11.5, turn: 0.45 },
+    { level: 55, file: "bench", side: 1, offset: 10, height: 2.8, turn: -0.2 },
+    { level: 65, file: "cart", side: -1, offset: 12, height: 4.3, turn: 0.65 },
+    { level: 75, file: "gazebo", side: 1, offset: 15, height: 7.2, turn: -0.55 },
+    { level: 85, file: "rocks", side: -1, offset: 12, height: 4.6, turn: 0.3 },
+    { level: 95, file: "fence", side: 1, offset: 11, height: 3.8, turn: -0.45 },
+  ] as const;
+  const landmarkObjects = new Map<string, THREE.Group>();
+  const loadingLandmarks = new Set<string>();
+
+  function syncLandmarks(index: number) {
+    for (const spec of landmarkSpecs) {
+      const near = Math.abs(spec.level - index) <= 18;
+      const existing = landmarkObjects.get(spec.file);
+      if (existing) {
+        existing.visible = near;
+        continue;
+      }
+      if (!near || loadingLandmarks.has(spec.file)) continue;
+      loadingLandmarks.add(spec.file);
+      landmarkLoader.load(
+        `/models/map/${spec.file}.glb`,
+        (gltf) => {
+          loadingLandmarks.delete(spec.file);
+          if (disposed) {
+            gltf.scene.traverse((object) => {
+              if (!(object instanceof THREE.Mesh)) return;
+              object.geometry.dispose();
+              const material = object.material as THREE.Material | THREE.Material[];
+              if (Array.isArray(material)) material.forEach((entry) => entry.dispose());
+              else material.dispose();
+            });
+            return;
+          }
+          const model = gltf.scene;
+          const bounds = new THREE.Box3().setFromObject(model);
+          const size = bounds.getSize(new THREE.Vector3());
+          const center = bounds.getCenter(new THREE.Vector3());
+          const scale = spec.height / Math.max(size.y, 0.001);
+          model.scale.setScalar(scale);
+          model.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale);
+          model.traverse((object) => {
+            if (!(object instanceof THREE.Mesh)) return;
+            object.castShadow = !opts.reducedMotion && spec.height >= 5;
+            object.receiveShadow = !opts.reducedMotion;
+          });
+
+          const anchor = nodePosition(spec.level);
+          const x = anchor.x + SIDE.x * spec.side * spec.offset;
+          const z = anchor.z + SIDE.z * spec.side * spec.offset;
+          const wrapper = new THREE.Group();
+          wrapper.name = `landmark-${spec.file}`;
+          wrapper.position.set(x, terrainHeight(x, z), z);
+          wrapper.rotation.y = Math.PI * 0.25 + spec.turn;
+          wrapper.visible = Math.abs(spec.level - focusIndex) <= 18;
+          wrapper.add(model);
+          landmarkObjects.set(spec.file, wrapper);
+          landmarkLayer.add(wrapper);
+        },
+        undefined,
+        () => loadingLandmarks.delete(spec.file),
+      );
+    }
+  }
 
   const trunkGeo = new THREE.CylinderGeometry(0.16, 0.24, 1.4, 6);
   const leafGeo = new THREE.IcosahedronGeometry(1, 0);
@@ -687,7 +818,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   }
 
   /* --- leaves on the wind -------------------------------------------- */
-  const LEAF_COUNT = 130;
+  const LEAF_COUNT = 48;
   let leaves: THREE.InstancedMesh | null = null;
   const leafState: { p: THREE.Vector3; v: THREE.Vector3; spin: number; rot: number }[] = [];
   if (!opts.reducedMotion) {
@@ -716,9 +847,11 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   const padGroup = new THREE.Group();
   scene.add(padGroup);
 
-  const padGeo = new THREE.CylinderGeometry(1.55, 1.75, 0.5, 8);
-  const stumpGeo = new THREE.CylinderGeometry(1.35, 1.5, 1.1, 8);
-  const ringGeo = new THREE.TorusGeometry(1.85, 0.12, 6, 20);
+  const baseGeo = new THREE.CylinderGeometry(1.86, 2.08, 0.28, 10);
+  const stumpGeo = new THREE.CylinderGeometry(1.42, 1.66, 0.94, 10);
+  const trimGeo = new THREE.CylinderGeometry(1.72, 1.58, 0.18, 10);
+  const padGeo = new THREE.CylinderGeometry(1.62, 1.78, 0.42, 10);
+  const ringGeo = new THREE.TorusGeometry(1.92, 0.11, 6, 28);
   /*
    * TAP TARGET. A pad is about 40 physical pixels across on a phone, and a
    * fingertip is nearer 45 — so an accurate tap on the number still missed.
@@ -746,29 +879,46 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     const g = new THREE.Group();
     const p = nodePosition(index);
     g.position.copy(p);
-    // A chain of identical stones reads as a loading placeholder. A per-level
-    // twist and a hair of scale — deterministic, so a pad never moves between
-    // visits — makes the same geometry read as a row of individual stumps.
+    // Tiny deterministic variations keep the pedestals authored, never noisy.
     const wob = mulberry(index * 2654435761)();
-    g.scale.setScalar(0.94 + wob * 0.12);
+    g.scale.setScalar(0.97 + wob * 0.06);
 
     const stumpMat = new THREE.MeshLambertMaterial({
-      color: node.unlocked ? C.woodDark : C.padLocked,
+      color: node.unlocked ? C.stoneDark : C.padLocked,
+    });
+    const baseMat = new THREE.MeshLambertMaterial({
+      color: node.unlocked ? C.stone : C.padLocked,
+    });
+    const trimMat = new THREE.MeshLambertMaterial({
+      color: node.done ? 0xd6a94b : node.unlocked ? C.stoneLight : C.padLocked,
     });
     const topMat = new THREE.MeshLambertMaterial({
-      color: node.isNext ? C.next : node.unlocked ? C.wood : C.padLocked,
+      color: node.isNext ? C.next : node.unlocked ? C.woodDark : C.padLocked,
     });
+
+    const base = new THREE.Mesh(baseGeo, baseMat);
+    base.rotation.y = wob * Math.PI * 2;
+    base.position.y = 0.14;
+    base.castShadow = !opts.reducedMotion;
+    base.receiveShadow = !opts.reducedMotion;
+    g.add(base);
 
     const stump = new THREE.Mesh(stumpGeo, stumpMat);
     stump.rotation.y = wob * Math.PI * 2;
-    stump.position.y = 0.55;
+    stump.position.y = 0.64;
     stump.castShadow = !opts.reducedMotion;
     stump.receiveShadow = !opts.reducedMotion;
     g.add(stump);
 
+    const trim = new THREE.Mesh(trimGeo, trimMat);
+    trim.rotation.y = wob * Math.PI * 2;
+    trim.position.y = 1.17;
+    trim.castShadow = !opts.reducedMotion;
+    g.add(trim);
+
     const top = new THREE.Mesh(padGeo, topMat);
     top.rotation.y = wob * Math.PI * 2;
-    top.position.y = 1.3;
+    top.position.y = 1.45;
     top.castShadow = !opts.reducedMotion;
     top.receiveShadow = !opts.reducedMotion;
     g.add(top);
@@ -779,11 +929,12 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
      * unlocked pad gets its number, and the chat pad gets its glyph.
      */
     const face = node.isChat ? "💬" : node.unlocked ? node.label : "🔒";
-    const faceColor = node.isNext ? "#ffffff" : node.unlocked ? "#5a3a17" : "#eef1f4";
+    const faceColor = node.unlocked ? "#78e7ff" : "#eef1f4";
+    const faceOutline = node.unlocked ? "#073b5c" : "#535d68";
     const decal = new THREE.Mesh(
       new THREE.PlaneGeometry(1.9, 1.9),
       new THREE.MeshBasicMaterial({
-        map: labelTexture(face, faceColor),
+        map: labelTexture(face, faceColor, faceOutline),
         transparent: true,
         depthWrite: false,
       }),
@@ -792,7 +943,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     // the plane's text-up ends on FWD, which is straight up the screen.
     decal.rotation.order = "YXZ";
     decal.rotation.set(-Math.PI / 2, Math.PI / 4, 0);
-    decal.position.y = 1.56;
+    decal.position.y = 1.67;
     g.add(decal);
 
     /*
@@ -808,7 +959,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
         new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 }),
       );
       ring.rotation.x = -Math.PI / 2;
-      ring.position.y = 1.62;
+      ring.position.y = 1.73;
       g.add(ring);
 
       const chevron = new THREE.Shape();
@@ -822,7 +973,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       chevron.closePath();
       const mark = new THREE.Mesh(
         new THREE.ExtrudeGeometry(chevron, { depth: 0.22, bevelEnabled: false }),
-        new THREE.MeshLambertMaterial({ color: 0x2fbd63, emissive: 0x1d7d40 }),
+        new THREE.MeshLambertMaterial({ color: C.number, emissive: 0x145a75 }),
       );
       /*
        * Height is a readability decision, not a taste one: seen down an
@@ -847,7 +998,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
         );
         s.rotation.order = "YXZ";
         s.rotation.set(-Math.PI / 2, Math.PI / 4, 0);
-        s.position.set((i - 1) * 0.45, 1.57, 1.05);
+        s.position.set((i - 1) * 0.45, 1.69, 1.05);
         g.add(s);
       }
     }
@@ -1036,7 +1187,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
    */
   let advancing: { from: number; to: number; t: number; phase: number; still: boolean } | null =
     null;
-  let road: THREE.Mesh | null = null;
+  let road: THREE.Group | null = null;
   let built = false;
   let disposed = false;
 
@@ -1050,7 +1201,9 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       if (o instanceof THREE.Mesh) {
         if (
           o.geometry !== padGeo &&
+          o.geometry !== baseGeo &&
           o.geometry !== stumpGeo &&
+          o.geometry !== trimGeo &&
           o.geometry !== ringGeo &&
           o.geometry !== hitGeo
         ) {
@@ -1120,52 +1273,52 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
 
   function buildScenery(count: number) {
     const extent = Math.max(count, 46);
-    /*
-     * Distant hills. The camera is orthographic and tilted down, so without
-     * something standing up at the far end the top of the frame is simply more
-     * grass — and the road stops reading as going anywhere. These sit deep in
-     * the fog, so they are a silhouette rather than a place.
-     */
-    const hillMat = new THREE.MeshLambertMaterial({ color: 0x7fb46a, flatShading: true });
-    for (let i = 0; i < 18; i++) {
-      const along = extent * 0.55 + i * 2.8;
+
+    // A distant silhouette gives the road depth without occupying its edges.
+    const hillMat = new THREE.MeshLambertMaterial({ color: 0x7ca968, flatShading: true });
+    for (let i = 0; i < 12; i++) {
+      const along = extent * 0.5 + i * 4.2;
       const base = nodePosition(along);
-      const off = (rnd() - 0.5) * 150;
-      const h = new THREE.Mesh(new THREE.ConeGeometry(16 + rnd() * 18, 9 + rnd() * 12, 5), hillMat);
-      h.position.set(base.x + SIDE.x * off - 30, -1.5, base.z + SIDE.z * off - 30);
-      h.rotation.y = rnd() * Math.PI;
-      scenery.add(h);
+      const off = (rnd() - 0.5) * 160;
+      const hill = new THREE.Mesh(
+        new THREE.ConeGeometry(18 + rnd() * 18, 9 + rnd() * 11, 5),
+        hillMat,
+      );
+      hill.position.set(base.x + SIDE.x * off - 28, -1.7, base.z + SIDE.z * off - 28);
+      hill.rotation.y = rnd() * Math.PI;
+      scenery.add(hill);
     }
 
-    // Trees along both verges, thinning near the road so pads stay readable.
-    for (let i = -2; i < extent; i++) {
-      const base = nodePosition(i);
-      for (const side of [-1, 1]) {
-        if (rnd() < 0.16) continue;
-        const off = (5.5 + rnd() * 13) * side;
-        const jitter = (rnd() - 0.5) * SPACING;
-        const x = base.x + SIDE.x * off + FWD.x * jitter;
-        const z = base.z + SIDE.z * off + FWD.z * jitter;
-        const t = tree(x, z, 0.9 + rnd() * 0.9);
-        scenery.add(t);
-        swayers.push({ g: t, phase: rnd() * Math.PI * 2, amp: 0.02 + rnd() * 0.03 });
+    /*
+     * Quiet roadside composition: one grove per chapter, leaving long bands of
+     * open meadow around the brick road and every interactive pedestal.
+     */
+    for (let chapter = 0, at = 7; at < extent; chapter++, at += 14) {
+      const anchor = nodePosition(at);
+      const side = chapter % 2 === 0 ? -1 : 1;
+      for (let i = 0; i < 3; i++) {
+        const off = side * (15 + i * 3.2 + rnd() * 2);
+        const along = (i - 1) * 3.4;
+        const x = anchor.x + SIDE.x * off + FWD.x * along;
+        const z = anchor.z + SIDE.z * off + FWD.z * along;
+        const item = tree(x, z, 1.1 + rnd() * 0.55);
+        scenery.add(item);
+        swayers.push({ g: item, phase: rnd() * Math.PI * 2, amp: 0.018 + rnd() * 0.018 });
       }
-      // Cover close to the verge, where trees are kept clear of the pads.
-      for (let k = 0; k < 3; k++) {
-        const off = (2.8 + rnd() * 6) * (rnd() < 0.5 ? -1 : 1);
-        const jit = (rnd() - 0.5) * SPACING;
+      for (let i = 0; i < 2; i++) {
+        const off = side * (11.5 + i * 2.8);
+        const along = (rnd() - 0.5) * 5;
         scenery.add(
-          undergrowth(base.x + SIDE.x * off + FWD.x * jit, base.z + SIDE.z * off + FWD.z * jit),
+          undergrowth(
+            anchor.x + SIDE.x * off + FWD.x * along,
+            anchor.z + SIDE.z * off + FWD.z * along,
+          ),
         );
       }
     }
 
-    /*
-     * Hundreds of grass blades sound expensive; one instanced triangle is
-     * not. They catch the sun at different angles and remove the last broad,
-     * empty patches of "green floor" without adding draw calls per blade.
-     */
-    const grassCount = Math.min(720, extent * 13);
+    // Sparse instanced grass supplies texture without turning into roadside noise.
+    const grassCount = Math.min(260, extent * 3);
     const tuftGeo = new THREE.ConeGeometry(0.12, 0.72, 3);
     tuftGeo.translate(0, 0.36, 0);
     const tufts = new THREE.InstancedMesh(
@@ -1181,14 +1334,14 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       const at = Math.floor(rnd() * extent);
       const base = nodePosition(at);
       const side = rnd() < 0.5 ? -1 : 1;
-      const off = side * (4.3 + rnd() * 22);
+      const off = side * (8 + rnd() * 25);
       const along = (rnd() - 0.5) * SPACING;
       const x = base.x + SIDE.x * off + FWD.x * along;
       const z = base.z + SIDE.z * off + FWD.z * along;
       dummy.position.set(x, terrainHeight(x, z), z);
-      dummy.rotation.set((rnd() - 0.5) * 0.16, rnd() * Math.PI, (rnd() - 0.5) * 0.2);
-      const s = 0.55 + rnd() * 1.45;
-      dummy.scale.set(s, s, s);
+      dummy.rotation.set((rnd() - 0.5) * 0.14, rnd() * Math.PI, (rnd() - 0.5) * 0.18);
+      const scale = 0.55 + rnd() * 1.25;
+      dummy.scale.setScalar(scale);
       dummy.updateMatrix();
       tufts.setMatrixAt(i, dummy.matrix);
       tufts.setColorAt(i, grassColors[Math.floor(rnd() * grassColors.length)]);
@@ -1197,118 +1350,6 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     if (tufts.instanceColor) tufts.instanceColor.needsUpdate = true;
     tufts.frustumCulled = false;
     scenery.add(tufts);
-
-    /* Small boundary stones make the worn road feel pressed into the meadow. */
-    const edgingCount = extent * 5;
-    const edging = new THREE.InstancedMesh(
-      new THREE.DodecahedronGeometry(0.22, 0),
-      new THREE.MeshLambertMaterial({ color: 0xb8aa8d, flatShading: true }),
-      edgingCount,
-    );
-    for (let i = 0; i < edgingCount; i++) {
-      const at = (i / edgingCount) * extent;
-      const base = nodePosition(at);
-      const side = i % 2 === 0 ? -1 : 1;
-      const along = (rnd() - 0.5) * 1.5;
-      const x = base.x + SIDE.x * side * (2.28 + rnd() * 0.32) + FWD.x * along;
-      const z = base.z + SIDE.z * side * (2.28 + rnd() * 0.32) + FWD.z * along;
-      dummy.position.set(x, terrainHeight(x, z) + 0.08, z);
-      dummy.rotation.set(rnd(), rnd(), rnd());
-      const s = 0.45 + rnd() * 0.75;
-      dummy.scale.set(s, 0.6 * s, s);
-      dummy.updateMatrix();
-      edging.setMatrixAt(i, dummy.matrix);
-    }
-    edging.instanceMatrix.needsUpdate = true;
-    edging.castShadow = !opts.reducedMotion;
-    edging.receiveShadow = !opts.reducedMotion;
-    scenery.add(edging);
-
-    /*
-     * The alphabet ruins are the landmark that makes the road somewhere rather
-     * than anywhere. One prop parked at level 2 was invisible by level 4, so
-     * they recur: a monument every dozen levels or so, alternating verges,
-     * each sunk to its own depth. Whatever you have climbed, one is in view.
-     */
-    for (let n = 0; n < Math.ceil(extent / 12); n++) {
-      const at = 3 + n * 12;
-      const side = n % 2 === 0 ? -1 : 1;
-      const anchor = nodePosition(at);
-      const r = ruin();
-      r.position.set(anchor.x + SIDE.x * 17 * side, 0, anchor.z + SIDE.z * 17 * side);
-      r.rotation.y = Math.PI * 0.25 + n * 0.7;
-      r.scale.setScalar(1.6 + rnd() * 0.5);
-      scenery.add(r);
-    }
-
-    /*
-     * Book gardens alternate with the stone alphabet. Each cluster is a tiny
-     * scene: a stack, an open page, and a warm marker ribbon. Repetition gives
-     * the road rhythm; small rotations stop it looking procedurally stamped.
-     */
-    for (let n = 0, at = 8; at < extent; n++, at += 13) {
-      const side = n % 2 === 0 ? 1 : -1;
-      const anchor = nodePosition(at);
-      const x = anchor.x + SIDE.x * 14.5 * side;
-      const z = anchor.z + SIDE.z * 14.5 * side;
-      const books = bookStack(0xb00c + n * 91);
-      books.position.set(x, terrainHeight(x, z), z);
-      books.rotation.y = Math.PI * 0.25 + n * 0.8;
-      books.scale.setScalar(1.1 + (n % 3) * 0.12);
-      scenery.add(books);
-
-      const open = openBook();
-      const ox = x + FWD.x * 5.2 + SIDE.x * side * 1.4;
-      const oz = z + FWD.z * 5.2 + SIDE.z * side * 1.4;
-      open.position.set(ox, terrainHeight(ox, oz), oz);
-      open.rotation.y = -Math.PI * 0.25 + n * 0.55;
-      open.scale.setScalar(0.82);
-      scenery.add(open);
-    }
-
-    /* Water breaks the green palette and gives the journey real places. */
-    for (let n = 0, at = 13; at < extent; n++, at += 17) {
-      const side = n % 2 === 0 ? -1 : 1;
-      const anchor = nodePosition(at);
-      const x = anchor.x + SIDE.x * 20 * side;
-      const z = anchor.z + SIDE.z * 20 * side;
-      const p = pond(0x90ad + n * 137);
-      p.position.set(x, terrainHeight(x, z) - 0.13, z);
-      p.rotation.y = n * 0.8;
-      scenery.add(p);
-    }
-
-    /* High silhouettes add depth without competing with the playable pads. */
-    for (let n = 0, at = 4; at < extent; n++, at += 9) {
-      const anchor = nodePosition(at);
-      const side = n % 2 === 0 ? -1 : 1;
-      const c = cloud(0xc10d + n * 31);
-      const home = new THREE.Vector3(
-        anchor.x + SIDE.x * side * (20 + (n % 3) * 5),
-        terrainHeight(anchor.x, anchor.z) + 16 + (n % 2) * 4,
-        anchor.z + SIDE.z * side * (20 + (n % 3) * 5),
-      );
-      c.position.copy(home);
-      c.scale.setScalar(0.78 + (n % 3) * 0.16);
-      scenery.add(c);
-      floaters.push({ g: c, home, phase: n * 1.7, drift: 0.65, lift: 0.35 });
-    }
-
-    for (let n = 0, at = 6; at < extent; n++, at += 8) {
-      const anchor = nodePosition(at);
-      const side = n % 2 === 0 ? 1 : -1;
-      const plane = paperPlane();
-      const home = new THREE.Vector3(
-        anchor.x + SIDE.x * side * 10,
-        terrainHeight(anchor.x, anchor.z) + 8 + (n % 3) * 1.6,
-        anchor.z + SIDE.z * side * 10,
-      );
-      plane.position.copy(home);
-      plane.rotation.set(0.15, Math.PI * 0.25 + n * 0.9, -0.1);
-      plane.scale.setScalar(0.8 + (n % 2) * 0.25);
-      scenery.add(plane);
-      floaters.push({ g: plane, home, phase: n * 2.1, drift: 1.4, lift: 0.8 });
-    }
   }
 
   /* --- picking --------------------------------------------------------- */
@@ -1700,7 +1741,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
           (p.ring.material as THREE.MeshBasicMaterial).opacity = 0.55 + Math.sin(t * 3) * 0.3;
         }
         if (p.node.isNext) {
-          p.top.position.y = 1.3 + Math.sin(t * 2.2) * 0.07;
+          p.top.position.y = 1.45 + Math.sin(t * 2.2) * 0.07;
           const mark = p.group.getObjectByName("chevron");
           if (mark) {
             mark.position.y = 4.4 + Math.sin(t * 2.6) * 0.38;
@@ -1761,6 +1802,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
         resize();
         frame();
       }
+      syncLandmarks(focusIndex);
       refreshPads();
       if (advancing) return; // the cinematic owns the pencil until it finishes
       if (playerIndex !== player) {
@@ -1785,6 +1827,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       panGoal = 0;
       panVel = 0;
       lastTouchAt = performance.now();
+      syncLandmarks(index);
       refreshPads();
     },
 
@@ -1807,6 +1850,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       panVel = 0;
       playerIndex = to;
       hop = null;
+      syncLandmarks(to);
       refreshPads();
       if (from === to) {
         advancing = null;
