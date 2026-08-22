@@ -13,6 +13,12 @@
  * time by the SRS (`planMixedReview`) and assembled by `buildReviewLesson`,
  * which is why review lessons stay useful forever instead of replaying the
  * same eight questions.
+ *
+ * A word or sentence lesson (levels 51+) has stored steps AND a `warmup`: a
+ * couple of SRS-chosen alphabet questions prepended at open time. That is how
+ * the letters keep accumulating evidence in phases that contain no letter
+ * lessons — see lib/pedagogy.ts §9. A warm-up with nothing due resolves to
+ * nothing at all, and the lesson starts on its own first step.
  */
 
 import { tintStyle } from "@/lib/palette";
@@ -26,7 +32,7 @@ import {
 } from "@/lib/pedagogy";
 import { useProgress } from "@/lib/progress-context";
 import { planMixedReview } from "@/lib/srs";
-import { buildReviewLesson, skillsForStep } from "@/lib/curriculum";
+import { buildReviewLesson, buildWarmupSteps, skillsForStep } from "@/lib/curriculum";
 import { starsFor, praise, encouragement, revealLine, completionHeadlineHe } from "@/lib/reward";
 import type { Stars } from "@/lib/reward";
 import { playSfx } from "@/lib/audio";
@@ -39,6 +45,7 @@ import {
   StepBar,
 } from "@/components/ui/kit";
 import {
+  BuildSentenceView,
   BuildWordView,
   LetterShapeView,
   LetterSoundView,
@@ -62,9 +69,26 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
     if (!ready) return;
     if (stored.kind === "mixed") {
       setResolved(buildReviewLesson(planMixedReview(progress), stored.id));
-    } else {
-      setResolved(stored);
+      return;
     }
+    const warmup = stored.warmup ?? 0;
+    if (warmup > 0) {
+      /*
+       * Ask the scheduler for more candidates than the warm-up will use.
+       * `buildWarmupSteps` drops word and sentence skills, and by level 51 a
+       * profile is thick with them — a default-sized plan can come back as
+       * eight word skills and leave the warm-up empty while letters are
+       * genuinely due. Over-fetching costs nothing: the extra candidates are
+       * discarded, not asked.
+       */
+      const plan = planMixedReview(progress, Date.now(), warmup * 6);
+      const steps = buildWarmupSteps(plan, warmup);
+      setResolved(
+        steps.length > 0 ? { ...stored, steps: [...steps, ...stored.steps] } : stored,
+      );
+      return;
+    }
+    setResolved(stored);
     // progress is deliberately omitted: resolve once per lesson opening.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, stored]);
@@ -111,9 +135,9 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
       if (correct) {
         setMessage(praise(index * 7 + attemptsHere));
         setMessageTone("good");
-        // build-word owns its own pacing: it shows the hero celebration and
-        // calls onAdvance itself.
-        if (step.type === "build-word") return;
+        // build-word and build-sentence own their own pacing: they show the
+        // hero celebration and call onAdvance themselves.
+        if (step.type === "build-word" || step.type === "build-sentence") return;
         setPhase("feedback");
         window.setTimeout(advance, 650);
         return;
@@ -123,7 +147,11 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
       setAttemptsHere(next);
       setWrongTotal((w) => w + 1);
 
-      if (next >= MAX_ATTEMPTS_PER_STEP && step.type !== "build-word") {
+      if (
+        next >= MAX_ATTEMPTS_PER_STEP &&
+        step.type !== "build-word" &&
+        step.type !== "build-sentence"
+      ) {
         // Never leave a child stuck in a failure loop. Show the answer,
         // say something kind, move on. The SRS will bring it back.
         setMessage(revealLine(index));
@@ -156,9 +184,16 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
     settled.current = true;
 
     completeLesson(lesson.id, stars);
-    // Every word actually built joins the chat lexicon.
+    // Every word actually built joins the chat lexicon — including the words
+    // inside a sentence, which is the whole point of the sentence phase
+    // sitting immediately before conversation mode.
     steps.forEach((s) => {
       if (s.type === "build-word") learnWord(s.word);
+      if (s.type === "build-sentence") {
+        s.sentence.split(" ").forEach((w) => {
+          if (w) learnWord(w);
+        });
+      }
     });
     playSfx("celebrate");
     setCelebrating(true);
@@ -261,6 +296,8 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
           <PressKeyView step={step} {...common} />
         ) : step.type === "build-word" ? (
           <BuildWordView step={step} {...common} />
+        ) : step.type === "build-sentence" ? (
+          <BuildSentenceView step={step} {...common} />
         ) : step.type === "tutorial" ? (
           <TutorialCardView step={step} {...common} />
         ) : (

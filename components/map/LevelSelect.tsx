@@ -35,6 +35,7 @@ import { tourAttr } from "@/lib/tour";
 import { tintStyle } from "@/lib/palette";
 import { playSfx, primeAudio } from "@/lib/audio";
 import { markStand, seenStand } from "@/lib/advancement";
+import { useStudioUnlock } from "@/lib/studio-unlock";
 import { Walkthrough } from "@/components/onboarding/Walkthrough";
 import { StarRow } from "@/components/ui/kit";
 import { ADVANCE_MS } from "./timing";
@@ -74,6 +75,7 @@ export function LevelSelect() {
   const [levelUpFrom, setLevelUpFrom] = useState<number | null>(null);
 
   const gate = useMemo(() => evaluateChatGate(progress), [progress]);
+  const unlockAll = useStudioUnlock();
   const stars = totalStars(progress);
 
   /** The track, in order, with conversation mode as the last stop on the road. */
@@ -104,7 +106,7 @@ export function LevelSelect() {
     const list: LevelNode[] = track.map((l, i) => ({
       id: l.id,
       label: String(i + 1),
-      unlocked: isLessonUnlocked(progress, l),
+      unlocked: unlockAll || isLessonUnlocked(progress, l),
       done: progress.lessonsCompleted.includes(l.id),
       isNext: i === nextIndex,
       isChat: false,
@@ -112,13 +114,13 @@ export function LevelSelect() {
     list.push({
       id: "chat",
       label: "",
-      unlocked: gate.unlocked,
+      unlocked: unlockAll || gate.unlocked,
       done: false,
       isNext: false,
       isChat: true,
     });
     return list;
-  }, [track, progress, nextIndex, gate.unlocked]);
+  }, [track, progress, nextIndex, gate.unlocked, unlockAll]);
 
   const activeIndex = selected ?? nextIndex;
   const activeNode = nodes[activeIndex];
@@ -354,6 +356,15 @@ export function LevelSelect() {
             >
               <span aria-hidden>💡</span>
             </button>
+            {unlockAll ? (
+              <div
+                className="grid h-14 place-items-center rounded-2xl border-[3px] border-white/70 bg-card/90 px-3 text-2xl shadow"
+                aria-label="מצב בדיקה: כל השלבים פתוחים"
+                title="מצב בדיקה: כל השלבים פתוחים"
+              >
+                <span aria-hidden>🔓</span>
+              </div>
+            ) : null}
             <div
               {...tourAttr("stars")}
               className="flex h-14 items-center gap-1 rounded-2xl border-[3px] border-white/70 bg-card/90 px-3 shadow"

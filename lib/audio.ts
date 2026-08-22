@@ -22,6 +22,7 @@ import {
   letterNameLineId,
   letterSoundLineId,
   narrationLineId,
+  sentenceLineId,
   wordLineId,
 } from "@/lib/voice/lines";
 import {
@@ -516,6 +517,19 @@ export function sayWord(word: string, rate = 0.7): void {
 }
 
 /**
+ * A whole English sentence.
+ *
+ * Nothing in the sentence phase is recorded yet, so today this is the browser
+ * voice every time — slower than a word, because a synthesiser running a
+ * sentence at conversational speed is the least intelligible thing it does.
+ * The moment somebody records the line in /studio the same call plays a human
+ * instead, with no change here. See lib/voice/lines.ts → sentenceLines.
+ */
+export function saySentence(sentence: string, rate = 0.65): void {
+  playLine(sentenceLineId(sentence), { text: sentence.toLowerCase(), rate });
+}
+
+/**
  * EVERYTHING A TUTORIAL CARD SHOULD SAY, in the right order.
  *
  * A card has two possible sounds: the recorded Hebrew narration, and the cue
@@ -583,6 +597,7 @@ export function sayNarration(stepId: string): void {
  *   "letter-name:A"     → speak "A"
  *   "letter-sound:A"    → speak the phoneme approximation, e.g. "ah"
  *   "word:APPLE"        → speak "apple"
+ *   "sentence:I SEE A CAT" → speak the whole sentence
  *   "en:any free text"  → speak it verbatim
  *
  * Unknown keys are ignored rather than throwing — content data is allowed to
@@ -612,6 +627,9 @@ export function say(key: string | undefined): void {
       break;
     case "word":
       sayWord(value);
+      break;
+    case "sentence":
+      saySentence(value);
       break;
     case "en":
       speakEn(value, 0.8);

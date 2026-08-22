@@ -23,6 +23,7 @@ import { chatLexicon, evaluateChatGate, masteredLetters } from "@/lib/srs";
 import { CHAT_NEW_WORDS_PER_TURN } from "@/lib/pedagogy";
 import { FALLBACK_REPLY_HE } from "@/lib/chat-prompt";
 import { sayWord } from "@/lib/audio";
+import { useStudioUnlock } from "@/lib/studio-unlock";
 import { BigButton, Card, ProgressRing, ScreenHeader, SecondaryButton } from "@/components/ui/kit";
 
 interface Msg {
@@ -65,6 +66,9 @@ export function ChatScreen() {
   const listEnd = useRef<HTMLDivElement | null>(null);
 
   const gate = useMemo(() => evaluateChatGate(progress), [progress]);
+  /* An authoring device (studio passcode saved) skips the gate — see
+     lib/studio-unlock.ts. */
+  const unlockAll = useStudioUnlock();
   const lexicon = useMemo(() => chatLexicon(progress), [progress]);
   const letters = useMemo(() => masteredLetters(progress), [progress]);
 
@@ -127,7 +131,7 @@ export function ChatScreen() {
   }
 
   /* --- Locked ------------------------------------------------------- */
-  if (!gate.unlocked) {
+  if (!gate.unlocked && !unlockAll) {
     return (
       <main className="flex min-h-dvh flex-col">
         <ScreenHeader title="לדבר באנגלית" onBack={() => router.push("/")} />

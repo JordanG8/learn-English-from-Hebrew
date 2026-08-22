@@ -299,6 +299,34 @@ html, body {
   to { transform: scale(1) translateY(0); opacity: 1; }
 }
 
+/* --- Sentence slots ------------------------------------------------
+ *
+ * A word build has three to nine slots and can afford 56px each. A sentence
+ * has up to twenty, spaces included, and at 56px "I WANT A BIG CAKE" wraps to
+ * one word per line on a phone — which is the single thing a sentence screen
+ * must not do, because "English words stand side by side" IS the lesson.
+ *
+ * So sentence slots size themselves from how many of them there are. The
+ * renderer sets --efh-slots to the token count; the floor keeps the letters
+ * legible and the ceiling stops a two-word sentence from looking like a
+ * different app. Wrapping still happens — but between whole words, never
+ * inside one, because each word is its own flex item.
+ */
+.efh-sentence {
+  --efh-slot-size: clamp(
+    28px,
+    calc((100vw - 5rem) / var(--efh-slots, 10) - 4px),
+    52px
+  );
+}
+.efh-sentence .efh-slot {
+  min-width: var(--efh-slot-size);
+  min-height: calc(var(--efh-slot-size) * 1.25);
+  border-width: 3px;
+  border-radius: 0.6rem;
+  font-size: calc(var(--efh-slot-size) * 0.62);
+}
+
 /* --- Celebration -------------------------------------------------- */
 .confetti-layer {
   position: fixed;
