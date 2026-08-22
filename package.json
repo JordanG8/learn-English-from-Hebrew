@@ -12,6 +12,7 @@
   "dependencies": {
     "@types/three": "^0.185.4",
     "@vercel/blob": "^2.8.0",
+    "@vercel/oidc": "^3.8.5",
     "ai": "^5.0.26",
     "next": "15.5.23",
     "react": "19.1.0",

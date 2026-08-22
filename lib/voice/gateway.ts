@@ -19,7 +19,13 @@
  * need `ai` >= 7 with `@ai-sdk/gateway` >= 4, and this app is on `ai` 5 for
  * conversation mode. Two major upgrades to reach two JSON endpoints is a
  * bigger, riskier change than the endpoints. See docs/voice.md.
+ *
+ * THE PRICE OF NOT USING THE SDK is that OIDC has to be resolved by hand, and
+ * that is the one part of this that is genuinely surprising — see
+ * `gatewayCredential`.
  */
+
+import { getVercelOidcToken } from "@vercel/oidc";
 
 export const GATEWAY_BASE = "https://ai-gateway.vercel.sh/v4/ai";
 
@@ -27,22 +33,49 @@ export const GATEWAY_BASE = "https://ai-gateway.vercel.sh/v4/ai";
 const PROTOCOL_VERSION = "0.0.1";
 
 /**
- * The bearer. Same two credentials the conversation route accepts, same
- * precedence, for the same reason: a deployment gets OIDC for free, a laptop
- * needs a key in `.env.local`. See docs/deployment.md.
+ * The bearer, and THE ONE THING ABOUT THIS THAT IS NOT OBVIOUS.
  *
- * The value is never returned to a caller, logged, or sent anywhere but the
- * gateway.
+ * `VERCEL_OIDC_TOKEN` is a process environment variable only on a laptop,
+ * where `vercel env pull` writes it into `.env.local`. In a deployed function
+ * it is NOT: it arrives per request as an `x-vercel-oidc-token` header, and
+ * `@vercel/oidc` is what reaches into the request context to get it. So code
+ * that reads `process.env.VERCEL_OIDC_TOKEN` works perfectly in development
+ * and returns null in production — which is exactly how this presented, and
+ * is the same trap `blobCredential` in lib/voice/store.ts documents for the
+ * blob store. The SDKs hide it; a hand-written fetch has to not.
+ *
+ * `getVercelOidcToken()` covers both: request context first, environment
+ * variable second, and it refreshes an expired token in development.
+ *
+ * An explicit API key still wins when one is set — same precedence as the
+ * conversation route. The value is never returned to a caller, logged, or
+ * sent anywhere but the gateway.
  */
-export function gatewayCredential(): string | null {
-  return process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN ?? null;
+export async function gatewayCredential(): Promise<string | null> {
+  const key = process.env.AI_GATEWAY_API_KEY;
+  if (key) return key;
+  try {
+    return await getVercelOidcToken();
+  } catch {
+    // Thrown when there is no request context and no variable — i.e. there is
+    // no OIDC here. That is a state, not an error.
+    return null;
+  }
 }
 
-/** Which mechanism is in play — a name, never a value. Diagnostics only. */
-export function credentialKind(): "api-key" | "oidc" | null {
+/**
+ * Which mechanism is in play — a name, never a value. Diagnostics only, and
+ * async for the same reason as above: on a deployment the only way to know
+ * whether OIDC is available is to ask for the token.
+ */
+export async function credentialKind(): Promise<"api-key" | "oidc" | null> {
   if (process.env.AI_GATEWAY_API_KEY) return "api-key";
-  if (process.env.VERCEL_OIDC_TOKEN) return "oidc";
-  return null;
+  try {
+    await getVercelOidcToken();
+    return "oidc";
+  } catch {
+    return null;
+  }
 }
 
 /**

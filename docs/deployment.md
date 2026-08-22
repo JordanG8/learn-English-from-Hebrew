@@ -65,6 +65,16 @@ provider SDK required.
 
 If both are present, `AI_GATEWAY_API_KEY` wins.
 
+> **`VERCEL_OIDC_TOKEN` is not a process environment variable in a deployed
+> function.** On a laptop `vercel env pull` writes it into `.env.local` and
+> `process.env.VERCEL_OIDC_TOKEN` reads it. In a deployment it arrives per
+> request as an `x-vercel-oidc-token` header instead, so the same expression
+> reads as "no credential" on a deployment that is working perfectly. Use
+> `getVercelOidcToken()` from `@vercel/oidc`, which looks in both places —
+> `lib/voice/gateway.ts` is the one place this project does it. This is the
+> same trap `blobCredential` in `lib/voice/store.ts` documents for Blob, and
+> it cost this feature a deploy to find twice.
+
 **Locally (`npm run dev`):** OIDC is not automatic — there is no deployment to issue a
 token — so local development needs an explicit value. Either:
 

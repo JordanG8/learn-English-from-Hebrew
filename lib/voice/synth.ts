@@ -112,18 +112,18 @@ export function synthEnabled(): boolean {
 }
 
 /** Names and booleans only, for the manifest route's diagnostics block. */
-export function synthEnvSummary(): {
+export async function synthEnvSummary(): Promise<{
   enabled: boolean;
   model: string;
   version: string;
   credential: "api-key" | "oidc" | null;
   voice: boolean;
-} {
+}> {
   return {
     enabled: synthEnabled(),
     model: SYNTH_MODEL,
     version: DIRECTION_VERSION,
-    credential: credentialKind(),
+    credential: await credentialKind(),
     voice: Boolean(SYNTH_VOICE),
   };
 }
@@ -226,7 +226,7 @@ export async function synthesizeLine(id: string): Promise<SynthResult> {
   const line = getVoiceLine(id);
   if (!line) return { ok: false, reason: "unknown-line" };
 
-  const key = gatewayCredential();
+  const key = await gatewayCredential();
   if (!key) return { ok: false, reason: "no-credential" };
 
   const d = directionFor(line);

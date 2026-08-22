@@ -64,9 +64,9 @@ export async function GET() {
       // needs this before its first line (see lib/voice/manifest.ts), and the
       // studio shows it so "why is the AI voice silent?" is answerable from
       // the page rather than from the logs. Names and booleans, never a key.
-      synth: synthEnvSummary(),
+      synth: await synthEnvSummary(),
       // The other direction: whether /speak can hear a child (lib/voice/listen.ts).
-      listen: listenEnvSummary(),
+      listen: await listenEnvSummary(),
       backend: kind,
       writable: kind !== "none",
       passcodeRequired: passcodeRequired(),

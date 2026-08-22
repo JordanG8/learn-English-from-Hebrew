@@ -66,15 +66,15 @@ export function listenEnabled(): boolean {
 }
 
 /** Names and booleans only — the same diagnostic shape as the speech tier. */
-export function listenEnvSummary(): {
+export async function listenEnvSummary(): Promise<{
   enabled: boolean;
   model: string;
   credential: "api-key" | "oidc" | null;
-} {
+}> {
   return {
     enabled: listenEnabled(),
     model: LISTEN_MODEL,
-    credential: credentialKind(),
+    credential: await credentialKind(),
   };
 }
 
@@ -97,7 +97,7 @@ export async function transcribeTake(
   if (!listenEnabled()) return { ok: false, reason: "off" };
   if (audio.byteLength > MAX_AUDIO_BYTES) return { ok: false, reason: "too-large" };
 
-  const key = gatewayCredential();
+  const key = await gatewayCredential();
   if (!key) return { ok: false, reason: "no-credential" };
 
   const controller = new AbortController();

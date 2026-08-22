@@ -32,6 +32,7 @@ import {
   CHAT_MODEL,
   CHAT_NEW_WORDS_MAX,
 } from "@/lib/pedagogy";
+import { credentialKind } from "@/lib/voice/gateway";
 import {
   FALLBACK_REPLY_HE,
   checkReply,
@@ -59,11 +60,23 @@ const BodySchema = z.object({
   newWordBudget: z.number().int().min(0).max(CHAT_NEW_WORDS_MAX).default(1),
 });
 
-/** Both credentials the AI Gateway accepts — see docs/deployment.md. */
-function hasCredential(): boolean {
-  return Boolean(
-    process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN,
-  );
+/**
+ * Both credentials the AI Gateway accepts — see docs/deployment.md.
+ *
+ * This asks lib/voice/gateway.ts rather than reading the environment itself,
+ * because reading the environment gets the answer wrong in exactly the place
+ * it matters. `VERCEL_OIDC_TOKEN` is a process variable on a laptop and NOT
+ * one in a deployed function, where the token arrives per request instead —
+ * so `process.env.VERCEL_OIDC_TOKEN` reads as "no credential" on a perfectly
+ * working production deployment, and this gate then answered every message
+ * with "conversation mode is not connected yet". `getVercelOidcToken()`,
+ * which is what gatewayCredential wraps, looks in both places.
+ *
+ * The AI SDK resolves OIDC by itself for the call below; this gate is the
+ * only thing that needed telling.
+ */
+async function hasCredential(): Promise<boolean> {
+  return (await credentialKind()) !== null;
 }
 
 interface ChatOk {
@@ -80,7 +93,7 @@ interface ChatDegraded {
 
 export async function POST(req: Request): Promise<NextResponse<ChatOk | ChatDegraded>> {
   // (2) No credential configured — degrade, do not crash.
-  if (!hasCredential()) {
+  if (!(await hasCredential())) {
     return NextResponse.json<ChatDegraded>(
       {
         ok: false,
