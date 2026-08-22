@@ -85,10 +85,20 @@ interface GatewayTranscriptionResponse {
 }
 
 /**
- * Transcribe one take. `mediaType` is whatever the browser's MediaRecorder
- * produced — webm/opus on Chrome and Android, mp4/aac on every iPhone — and
- * is passed through rather than guessed, because guessing it is how the
- * iPhone half of the audience stops working.
+ * Transcribe one take.
+ *
+ * `mediaType` is passed through rather than guessed, because guessing it is
+ * how half the audience stops working. What arrives is normally `audio/wav`:
+ * the browser converts before uploading, and it has to, because
+ *
+ *   fish-audio/transcribe-1 REJECTS `audio/webm` — "the audio could not be
+ *   decoded (format not recognised)" — which is exactly what Chrome and
+ *   Android record. It accepts wav, ogg and mp3. The WebM *container* is the
+ *   problem, not Opus: the same Opus stream in an Ogg container is fine.
+ *
+ * See lib/voice/wav.ts, which is where that conversion lives and why. This
+ * function still passes through whatever it is handed, so a take that could
+ * not be converted gets its chance and a clear upstream error if it fails.
  */
 export async function transcribeTake(
   audio: Buffer,

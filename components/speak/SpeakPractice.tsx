@@ -50,6 +50,7 @@ import { encouragement, praise } from "@/lib/reward";
 import { ScreenHeader } from "@/components/ui/kit";
 import { useRecorder } from "@/components/studio/useRecorder";
 import type { Verdict } from "@/lib/voice/pronounce";
+import { toWav } from "@/lib/voice/wav";
 
 /**
  * A take stops itself. A seven-year-old will not reliably tap "stop", and a
@@ -124,12 +125,17 @@ export function SpeakPractice() {
     async (blob: Blob, target: string) => {
       setPhase("checking");
       try {
+        // WHAT CHROME RECORDS, THE MODEL CANNOT READ. WebM is rejected by the
+        // transcription model outright — see lib/voice/wav.ts — so the take
+        // is converted here, on the one machine that can decode it. A failed
+        // conversion sends the original and lets the server answer.
+        const sending = (await toWav(blob)) ?? blob;
         const res = await fetch(
           `/api/voice/check?word=${encodeURIComponent(target)}`,
           {
             method: "POST",
-            headers: { "content-type": blob.type || "audio/webm" },
-            body: blob,
+            headers: { "content-type": sending.type || "audio/wav" },
+            body: sending,
           },
         );
         const json = (await res.json().catch(() => null)) as
@@ -174,6 +180,25 @@ export function SpeakPractice() {
     await check(take.blob, word.word);
   }, [recorder, check, word]);
 
+  /**
+   * THE TIMER MUST NOT CLOSE OVER THIS RENDER'S `finishTake`.
+   *
+   * `useRecorder` decides whether there is anything to stop by reading its own
+   * `state`, which is React state — so the `finishTake` that exists while a
+   * take is being STARTED closes over `state === "idle"`, and calling it four
+   * seconds later returns null without ever stopping the recorder. Every
+   * automatic take came back as "we heard nothing" while the manual "סיימתי"
+   * tap worked, because a tap happens in a later render and a timer does not.
+   *
+   * A ref refreshed on every render is the fix: the timer calls whatever
+   * `finishTake` is current when it fires, which is one that can see the
+   * recording.
+   */
+  const finishRef = useRef(finishTake);
+  useEffect(() => {
+    finishRef.current = finishTake;
+  });
+
   const startTake = useCallback(async () => {
     primeAudio();
     stopSpeech();
@@ -181,8 +206,11 @@ export function SpeakPractice() {
     setAnswer(null);
     await recorder.start();
     setPhase("recording");
-    autoStopRef.current = window.setTimeout(() => void finishTake(), TAKE_MS);
-  }, [recorder, finishTake]);
+    autoStopRef.current = window.setTimeout(
+      () => void finishRef.current(),
+      TAKE_MS,
+    );
+  }, [recorder]);
 
   const next = useCallback(() => {
     clearAutoStop();

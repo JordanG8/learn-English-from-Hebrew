@@ -118,6 +118,20 @@ export function editDistance(a: string, b: string): number {
  */
 function consonantSkeleton(word: string): string {
   return word
+    // VOICING IS THE OTHER HALF OF THE SAME PROBLEM. /t/ and /d/ differ only
+    // by whether the vocal folds are running, and a phone microphone at arm's
+    // length routinely loses that: the model transcribed a clean "sit" as
+    // "said". Folding each voiced consonant onto its voiceless partner (and
+    // "c" onto "k", which is spelling rather than sound) puts those in
+    // "nearly" alongside the vowel confusions. It cannot produce a false
+    // "correct" — a skeleton match is never a match — so the worst it can do
+    // is ask a child to say a word once more while showing them what we
+    // heard.
+    .replace(/d/g, "t")
+    .replace(/b/g, "p")
+    .replace(/[gc]/g, "k")
+    .replace(/v/g, "f")
+    .replace(/z/g, "s")
     // "ow", "aw", "ew" are vowel digraphs, not a vowel and then a consonant —
     // without this, "bowl" and "ball" read as different skeletons.
     .replace(/([aeiou])w/g, "$1")
