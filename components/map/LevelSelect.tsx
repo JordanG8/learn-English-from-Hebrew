@@ -311,6 +311,17 @@ export function LevelSelect() {
           </button>
 
           <div className="flex items-center gap-2">
+            {/* Speaking practice. An icon in the secondary cluster, never a
+                second primary action: the road has exactly one of those. */}
+            <button
+              type="button"
+              disabled={held}
+              onClick={() => router.push("/speak")}
+              aria-label="מדברים אנגלית"
+              className="grid h-14 w-14 place-items-center rounded-2xl border-[3px] border-white/70 bg-card/90 text-2xl shadow"
+            >
+              <span aria-hidden>🎤</span>
+            </button>
             <button
               type="button"
               {...tourAttr("replay-tutorial")}

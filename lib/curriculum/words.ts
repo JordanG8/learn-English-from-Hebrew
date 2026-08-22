@@ -14,7 +14,7 @@
  */
 
 import type { WordData } from "./contract";
-import { TEACHING_ORDER } from "./alphabet";
+import { LETTERS, TEACHING_ORDER } from "./alphabet";
 
 const w = (
   word: string,
@@ -114,4 +114,31 @@ export function payoffWordFor(letter: string): WordData | undefined {
   if (idx < 0) return undefined;
   const taught = TEACHING_ORDER.slice(0, idx + 1);
   return buildableWords(taught).find((word) => unlockIndex(word) === idx);
+}
+
+/**
+ * THE WORDS PRONUNCIATION PRACTICE IS ALLOWED TO ASK FOR.
+ *
+ * The word bank plus every letter's example word — the same union the voice
+ * catalogue builds its `word` group from (lib/voice/lines.ts), for the same
+ * reason: both are "every English word a child hears in this app".
+ *
+ * It exists as a set because /api/voice/check takes a word from the client and
+ * must not accept an arbitrary one. That check is what keeps the endpoint a
+ * feature of this curriculum rather than an open transcription service.
+ */
+const PRACTICE_WORDS: ReadonlySet<string> = new Set([
+  ...WORDS.map((w) => w.word.toUpperCase()),
+  ...LETTERS.map((l) => l.exampleWord.toUpperCase()),
+]);
+
+export function isPracticeWord(word: string): boolean {
+  return PRACTICE_WORDS.has(word.toUpperCase());
+}
+
+/** The practice list, in teaching order, so the easiest words come first. */
+export function practiceWords(): WordData[] {
+  return [...WORDS].sort(
+    (a, b) => a.tier - b.tier || unlockIndex(a) - unlockIndex(b) || a.word.length - b.word.length,
+  );
 }

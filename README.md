@@ -33,10 +33,20 @@ conversation mode.
 ## The app's voice
 
 Everything spoken — letter names, letter sounds, words, and the first-visit
-walkthrough — plays a **recorded human voice** when one exists, and falls back
-to browser TTS only for lines nobody has recorded yet. Recording happens at
-`/studio`, from a phone, and a line is audible in the app seconds later with no
-deploy. See `docs/voice.md`.
+walkthrough — plays a **recorded human voice** when one exists. Recording
+happens at `/studio`, from a phone, and a line is audible in the app seconds
+later with no deploy.
+
+A line nobody has recorded is spoken by a **speech model** through the Vercel
+AI Gateway, generated once and cached, and only then by the browser's own
+robotic voice. See `docs/voice.md`.
+
+## Saying it back
+
+`/speak` points the microphone the other way: the child says an English word
+and sees **the word the model heard**. It never says "wrong" — a phone
+microphone mishears — and it never feeds the mastery spine, which grades only
+evidence it can trust. Nothing recorded there is stored.
 
 ## Development
 

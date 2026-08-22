@@ -21,6 +21,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { VOICE_ID_RE } from "./lines";
+import { DIRECTION_VERSION } from "./synth";
 
 export interface StoredClip {
   id: string;
@@ -460,5 +461,105 @@ export async function readClip(
     return { name, data };
   } catch {
     return null;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* The synthesised cache — same two backends, a separate shelf          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * SYNTHESISED CLIPS LIVE APART FROM RECORDED ONES, ON PURPOSE.
+ *
+ * A different prefix, a different dev directory, and no entry in the manifest.
+ * Three consequences, all of them wanted:
+ *
+ *  · The studio's progress bar keeps meaning "lines a human has recorded".
+ *    Folding a generated clip in would let the app report a finished voice
+ *    when nobody has spoken a word of it.
+ *  · The export zip (`ייצוא` → `public/voice/`) keeps containing only takes a
+ *    person made. Committing generated audio into the repo is a decision for
+ *    a human to make deliberately, not a side effect of a lesson being played.
+ *  · Deleting the whole shelf is one prefix, which is what a change of model,
+ *    voice or direction eventually wants.
+ *
+ * The path carries DIRECTION_VERSION, so re-directing the voice regenerates
+ * rather than serving yesterday's take. Old versions are left where they are —
+ * a few hundred kilobytes — and are cleared by deleting the prefix.
+ */
+export const SYNTH_PREFIX = "voice-synth/";
+
+/**
+ * Not `public/`: this is a cache, not an asset, and it must never be swept up
+ * by the export or committed by accident. Gitignored. In production this path
+ * is unreachable (read-only filesystem) and the blob branch is the only one
+ * that runs.
+ */
+const SYNTH_FS_DIR = path.join(process.cwd(), ".voice-synth");
+
+function synthPath(id: string): string {
+  return `${SYNTH_PREFIX}${DIRECTION_VERSION}/${id}.mp3`;
+}
+
+/** The cached mp3 for a line, or null for a miss. Never throws. */
+export async function readSynth(id: string): Promise<Buffer | null> {
+  if (!validId(id)) return null;
+  try {
+    switch (backend()) {
+      case "blob": {
+        const got = await readBlobStream(synthPath(id));
+        if (!got) return null;
+        return Buffer.from(await new Response(got.stream).arrayBuffer());
+      }
+      case "fs":
+        return await fs.readFile(
+          path.join(SYNTH_FS_DIR, DIRECTION_VERSION, `${id}.mp3`),
+        );
+      default:
+        return null;
+    }
+  } catch {
+    // A miss and an unreachable store are the same thing to the caller: the
+    // line gets generated. Never fail a lesson over a cold cache.
+    return null;
+  }
+}
+
+/**
+ * Cache one generated line. Best effort by design — the bytes are already on
+ * their way to the child, and a store that refuses the write costs a
+ * regeneration next time, not a silent screen.
+ */
+export async function writeSynth(id: string, data: Buffer): Promise<void> {
+  if (!validId(id)) return;
+  try {
+    switch (backend()) {
+      case "blob": {
+        const { put } = await import("@vercel/blob");
+        await withAccess((access) =>
+          put(synthPath(id), data, {
+            access,
+            contentType: "audio/mpeg",
+            addRandomSuffix: false,
+            allowOverwrite: true,
+            // A year: the only thing that invalidates a generated line is a
+            // new DIRECTION_VERSION, which is a new path.
+            cacheControlMaxAge: 31_536_000,
+            token: blobToken(),
+          }),
+        );
+        return;
+      }
+      case "fs": {
+        const dir = path.join(SYNTH_FS_DIR, DIRECTION_VERSION);
+        await fs.mkdir(dir, { recursive: true });
+        await fs.writeFile(path.join(dir, `${id}.mp3`), data);
+        return;
+      }
+      default:
+        return;
+    }
+  } catch {
+    /* the cache is an optimisation; never let it break playback */
   }
 }

@@ -11,6 +11,12 @@
  *     with the build, are on the CDN, and work offline. This is where
  *     recordings should end up once they are final (see docs/voice.md).
  *
+ * It also carries one thing that is not a recording: whether the SYNTHESISED
+ * voice (lib/voice/synth.ts) is reachable from this deployment. The player
+ * needs that before it plays its first line, because "no recording" now has
+ * two possible answers and only the server knows which one applies. See
+ * `synthUrl` at the bottom.
+ *
  * FAILURE POLICY: every fetch here is allowed to fail. A missing manifest
  * means "nothing is recorded", which degrades to the TTS fallback — never to
  * an error, and never to silence on a line that has a fallback.
@@ -28,9 +34,22 @@ export interface VoiceClip {
 
 export type VoiceManifest = Record<string, VoiceClip>;
 
+/**
+ * What the server says about the synthesised tier. Names and booleans only —
+ * see synthEnvSummary in lib/voice/synth.ts.
+ */
+export interface SynthInfo {
+  enabled: boolean;
+  model: string;
+  version: string;
+  credential: "api-key" | "oidc" | null;
+  voice: boolean;
+}
+
 const EMPTY: VoiceManifest = Object.freeze({});
 
 let manifest: VoiceManifest = EMPTY;
+let synth: SynthInfo | null = null;
 let loaded = false;
 let inFlight: Promise<VoiceManifest> | null = null;
 const listeners = new Set<(m: VoiceManifest) => void>();
@@ -67,7 +86,7 @@ export function loadVoiceManifest(force = false): Promise<VoiceManifest> {
   inFlight = (async () => {
     const [bundled, store] = await Promise.all([
       fetchJson<{ clips: VoiceClip[] }>("/voice/index.json"),
-      fetchJson<{ clips: VoiceClip[] }>("/api/voice/manifest"),
+      fetchJson<{ clips: VoiceClip[]; synth?: SynthInfo }>("/api/voice/manifest"),
     ]);
     const next: VoiceManifest = {};
     for (const c of bundled?.clips ?? []) {
@@ -76,6 +95,7 @@ export function loadVoiceManifest(force = false): Promise<VoiceManifest> {
     for (const c of store?.clips ?? []) {
       next[c.id] = { ...c, source: "store" };
     }
+    synth = store?.synth ?? null;
     inFlight = null;
     return publish(next);
   })();
@@ -118,4 +138,55 @@ export function voiceUrl(id: string): string | null {
 
 export function recordedCount(ids: readonly string[]): number {
   return ids.reduce((n, id) => (manifest[id] ? n + 1 : n), 0);
+}
+
+/* ------------------------------------------------------------------ */
+/* The synthesised tier                                                 */
+/* ------------------------------------------------------------------ */
+
+/** What the server reported about synthesis, or null before the first load. */
+export function synthInfo(): SynthInfo | null {
+  return synth;
+}
+
+/**
+ * HOW MANY TIMES THE APP IS WILLING TO BE DISAPPOINTED.
+ *
+ * The manifest says whether synthesis *should* work — a credential exists and
+ * the feature is on. It cannot say whether the gateway will actually answer:
+ * an account with no credit, an exhausted free tier and a model id typed
+ * wrong all look identical from the browser, and all produce a 404 per line.
+ *
+ * Paying a network round trip for each of ~180 lines to rediscover that would
+ * put a real, audible delay in front of the browser voice on every single
+ * step. So a few failures in a row retire the tier for the rest of the
+ * session, and the app is exactly as fast as it was before this feature
+ * existed. A reload tries again, which is the right granularity: the fix for
+ * every one of those causes is a change on the server anyway.
+ */
+const SYNTH_FAILURE_BUDGET = 3;
+let synthFailures = 0;
+
+export function synthRetired(): boolean {
+  return synthFailures >= SYNTH_FAILURE_BUDGET;
+}
+
+export function noteSynthFailure(): void {
+  synthFailures += 1;
+}
+
+/** A generation that played resets the budget: it was a blip, not the state. */
+export function noteSynthSuccess(): void {
+  synthFailures = 0;
+}
+
+/**
+ * The URL that will speak `id` without a human, or null if this deployment
+ * cannot. Never returns a URL for a line that has a recording — the caller
+ * checks `voiceUrl` first — because a recording always wins.
+ */
+export function synthUrl(id: string): string | null {
+  if (!synth?.enabled || !synth.credential) return null;
+  if (synthRetired()) return null;
+  return `/api/voice/synth/${encodeURIComponent(id)}`;
 }

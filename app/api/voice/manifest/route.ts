@@ -19,6 +19,8 @@ import {
   listClips,
 } from "@/lib/voice/store";
 import { passcodeRequired } from "@/lib/voice/guard";
+import { synthEnvSummary } from "@/lib/voice/synth";
+import { listenEnvSummary } from "@/lib/voice/listen";
 import { isKnownVoiceLine } from "@/lib/voice/lines";
 
 export const runtime = "nodejs";
@@ -58,6 +60,13 @@ export async function GET() {
       clips: clips
         .filter((c) => isKnownVoiceLine(c.id))
         .map(({ pathname: _pathname, ...clip }) => clip),
+      // Whether the app can speak a line nobody has recorded. The player
+      // needs this before its first line (see lib/voice/manifest.ts), and the
+      // studio shows it so "why is the AI voice silent?" is answerable from
+      // the page rather than from the logs. Names and booleans, never a key.
+      synth: synthEnvSummary(),
+      // The other direction: whether /speak can hear a child (lib/voice/listen.ts).
+      listen: listenEnvSummary(),
       backend: kind,
       writable: kind !== "none",
       passcodeRequired: passcodeRequired(),

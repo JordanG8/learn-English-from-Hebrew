@@ -19,8 +19,10 @@ app/
   lesson/[id]/page.tsx  → components/lesson/LessonPlayer   (all 100 prerendered)
   chat/page.tsx         → components/chat/ChatScreen
   api/chat/route.ts     the only server-side secret-holder
-  api/voice/*           the recorded-voice manifest, clip write, zip export
+  api/voice/*           the voice manifest, clip write, zip export, and the
+                        two gateway routes: synth (speak) and check (listen)
   studio/page.tsx       → components/studio/VoiceStudio (authoring tool)
+  speak/page.tsx        → components/speak/SpeakPractice (say it, be heard)
   globals.css           design system + the five accessibility rules
 middleware.ts           sets the httpOnly visit cookie (layer 1 of 3)
 
@@ -31,7 +33,7 @@ lib/
   progress.ts           localStorage: load / coerce / migrate / pure updates
   srs.ts                THE SPINE: grading, due-ness, mastery, the chat gate
   reward.ts             stars, Hebrew praise, the anti-overjustification rules
-  audio.ts              WebAudio SFX + speech: recorded clip first, TTS second
+  audio.ts              WebAudio SFX + speech: recording, then model, then TTS
   tour.ts               the data-tour selector contract
   visitor.ts            returning-visitor policy (pure)
   visitor-server.ts     server-side read of the visit cookie
@@ -43,6 +45,10 @@ lib/
     lines.ts            the closed catalogue of every spoken line
     manifest.ts         client: which lines are recorded, and where
     store.ts            server: Vercel Blob or public/voice, one API
+    gateway.ts          server: the AI Gateway credential and headers, once
+    synth.ts            server: text -> mp3, cached (the synthesised voice)
+    listen.ts           server: audio -> text (pronunciation practice)
+    pronounce.ts        pure: was that the word? match / nearly / different
     guard.ts            who may change the app's voice
     client.ts           the studio's side of the wire
     zip.ts              dependency-free zip for the export

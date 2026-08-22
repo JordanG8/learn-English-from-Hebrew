@@ -110,6 +110,48 @@ public. Set this to any string (Production, Preview and Development) and the
 studio asks for it once per device. If it is unset, recording is allowed in
 development and **refused in production** with a message saying what to set.
 
+### The gateway now serves three things, not one
+
+`AI_GATEWAY_API_KEY` (or OIDC) is no longer only for conversation mode. Three
+features share the one credential:
+
+| Feature | Model | Endpoint |
+|---|---|---|
+| Conversation mode | `anthropic/claude-sonnet-5` | via the AI SDK |
+| The synthesised voice | `fish-audio/s2.1-pro` | `POST /v4/ai/speech-model` |
+| Pronunciation practice (`/speak`) | `fish-audio/transcribe-1` | `POST /v4/ai/transcription-model` |
+
+All three degrade to the behaviour the app had before them if the credential is
+missing or the gateway refuses. None of them is required for the app to work.
+
+**A gateway credential is not the same as gateway credit.** A request from an
+account with no AI Gateway balance comes back `403 no_providers_available`
+("Free tier users do not have access to this model") or `429`, whichever the
+model's free tier allows — with a perfectly valid credential. If the voice is
+silent and `/speak` says it could not listen, check the balance at
+**Vercel dashboard → AI Gateway** before checking anything else:
+
+```bash
+curl -H "Authorization: Bearer $AI_GATEWAY_API_KEY" https://ai-gateway.vercel.sh/v1/credits
+```
+
+The Fish models are complimentary through 18 September 2026; appending `-free`
+to a model id (`fish-audio/s2.1-pro-free`) pins the promotional variant, which
+stops serving rather than starting to bill when that ends.
+
+### Optional voice variables
+
+None of these need to be set. They exist so the voice can be changed without a
+code change.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `VOICE_SYNTH_MODEL` | `fish-audio/s2.1-pro` | Any gateway speech model — `openai/tts-1`, `fish-audio/s2.1-pro-free`… |
+| `VOICE_SYNTH_VOICE` | unset | A Fish voice id. Clone the voice recorded at `/studio` and the generated lines sound like the same person. |
+| `VOICE_SYNTH_DISABLED` | unset | `1` turns the synthesised tier off; the app falls back to browser TTS. |
+| `VOICE_LISTEN_MODEL` | `fish-audio/transcribe-1` | Any gateway transcription model — `openai/whisper-1`… |
+| `VOICE_LISTEN_DISABLED` | unset | `1` turns `/speak`'s checking off. |
+
 ### Summary
 
 | Variable | Where it comes from | Deployed | Local |

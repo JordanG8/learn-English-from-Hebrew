@@ -6,13 +6,18 @@
  *  1. UI sound (correct / wrong / celebrate) is synthesised with WebAudio.
  *     No asset files, no network, no licensing, works offline.
  *  2. Speech (a letter's NAME, its SOUND, a word, or a line of Hebrew
- *     narration) plays a RECORDED HUMAN VOICE when one exists — see
- *     lib/voice/ for the catalogue and /studio for how recordings get made.
- *     A line nobody has recorded yet falls back to the browser's
- *     SpeechSynthesis en-US voice, and if the device has no English voice
- *     either, to silence. That last degradation is safe because every step
- *     also carries its instruction as Hebrew text, per design rule 3, so
- *     audio is never the only channel.
+ *     narration) has three voices, and always uses the best one available
+ *     for the line in hand:
+ *       a. a RECORDED HUMAN VOICE, when one exists — see lib/voice/ for the
+ *          catalogue and /studio for how recordings get made;
+ *       b. a SYNTHESISED voice for lines nobody has recorded yet, generated
+ *          once through the AI Gateway and cached — see lib/voice/synth.ts.
+ *          This is also the only voice Hebrew narration has ever had;
+ *       c. the browser's SpeechSynthesis en-US voice, and if the device has
+ *          no English voice either, silence.
+ *     Every step below (a) is a degradation, and every one of them is safe
+ *     because each step also carries its instruction as Hebrew text, per
+ *     design rule 3, so audio is never the only channel.
  *
  * NOTE: this is *output* speech only. Conversation mode is text-only and
  * never touches the microphone.
@@ -26,6 +31,9 @@ import {
 } from "@/lib/voice/lines";
 import {
   loadVoiceManifest,
+  noteSynthFailure,
+  noteSynthSuccess,
+  synthUrl,
   voiceManifestReady,
   voiceUrl,
 } from "@/lib/voice/manifest";
@@ -455,7 +463,13 @@ export function playLine(
     return;
   }
 
-  const url = voiceUrl(lineId);
+  // THE THREE VOICES, in the only order that is ever right: a person, then a
+  // speech model, then the browser. `synthUrl` returns null the moment the
+  // middle one is unavailable or has stopped answering, so an app with no
+  // gateway credential behaves exactly as it did before it existed.
+  const recorded = voiceUrl(lineId);
+  const synthesised = recorded ? null : synthUrl(lineId);
+  const url = recorded ?? synthesised;
   if (!url) {
     speakFallback();
     return;
@@ -474,11 +488,20 @@ export function playLine(
     el.pause();
     el.src = url;
     el.currentTime = 0;
-    // A 404 (clip deleted between manifest load and playback) or a codec the
-    // device cannot decode both land here — TTS covers the gap.
-    el.onerror = () => {
-      if (ticket === speechTicket) speakFallback();
+    const failed = () => {
+      if (ticket !== speechTicket) return;
+      // A synthesised line that will not load is a fact about the deployment,
+      // not about this line: no credit, no credential, a model that has
+      // stopped serving. Counting it is what eventually retires the tier
+      // instead of paying for the same discovery 180 times.
+      if (synthesised) noteSynthFailure();
+      speakFallback();
     };
+    // A 404 (clip deleted between manifest load and playback, or a generation
+    // the gateway refused) or a codec the device cannot decode both land
+    // here — the next voice down covers the gap.
+    el.onerror = failed;
+    el.onplaying = synthesised ? () => noteSynthSuccess() : null;
     const p = el.play();
     if (p && typeof p.catch === "function") {
       p.catch(() => {
@@ -543,7 +566,11 @@ export function sayCard(stepId: string, sayKey?: string): void {
     return;
   }
 
-  if (!voiceUrl(narrationLineId(stepId))) {
+  // "Does this card speak?" now has two ways to be true — a recording, or a
+  // line the speech model will read. Only when neither is available does the
+  // cue take the card's place, which is the pre-recording behaviour.
+  const narrationId = narrationLineId(stepId);
+  if (!voiceUrl(narrationId) && !synthUrl(narrationId)) {
     if (cue) say(cue);
     return;
   }

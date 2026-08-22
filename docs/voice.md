@@ -129,18 +129,127 @@ they are deleted by deleting the files.
 Re-recording a line replaces it. The old take is gone, so the studio plays
 each take back the moment it ends.
 
+## The three voices
+
+Since the Fish Audio models landed on the AI Gateway, a line the app wants to
+say has three possible sources, and it always takes the best one available:
+
+| | Voice | Where it comes from | When it is used |
+|---|---|---|---|
+| 1 | **A person** | `/studio`, stored in Blob or `public/voice/` | Whenever a recording exists. Always wins. |
+| 2 | **A speech model** | `fish-audio/s2.1-pro` through the AI Gateway, cached as mp3 | A line nobody has recorded |
+| 3 | **The browser** | `speechSynthesis`, English only | Neither of the above |
+
+Tier 1 is the whole catalogue today — all 182 lines are recorded — so tier 2
+is a safety net rather than something a child hears. It earns its place at
+three moments:
+
+- **A line that is added later.** A new letter or word is speakable the moment
+  it exists, in a real voice, instead of waiting for a recording session.
+- **Hebrew.** Hebrew lines have no browser fallback on purpose (see above), so
+  before recordings existed an unrecorded card was silent. Fish's S2 line is
+  multilingual, so tier 2 covers Hebrew as well as English.
+- **In the studio.** Every line now has a **🎧 קול AI** button next to
+  **▶️ ההקלטה שלי**, so the person recording can hear the model's reading of
+  the same line before deciding whether theirs is better. It usually is — but
+  hearing them next to each other is the only way to know.
+
+### What the model is told
+
+`lib/voice/synth.ts` sends a different direction per group, because the four
+groups need four genuinely different readings:
+
+- **Letter sounds** get the IPA the curriculum already carries (`/b/`, not
+  `"buh"`) plus an explicit instruction that this is a phoneme in isolation
+  with no trailing vowel. This is the line browser TTS gets worst and the
+  reason this tier is interesting at all.
+- **Letter names**, **words** and **Hebrew narration** each get their own pace
+  and their own instruction. All four say the listener is a seven-year-old.
+
+Changing any of that direction means bumping `DIRECTION_VERSION`, which is
+part of the cache path, so every line regenerates rather than serving
+yesterday's take. Old versions are orphaned, not deleted — clear them by
+deleting the `voice-synth/` prefix in the Blob store.
+
+### Where generated clips live
+
+A separate shelf from the recordings, deliberately: `voice-synth/<version>/` in
+Blob, `.voice-synth/` (gitignored) in local development. So the studio's
+progress bar keeps meaning "lines a human has recorded", and the export zip
+keeps containing only takes a person made.
+
+Generation happens once per line, on first play, and is then served from the
+store and the CDN with a one-year cache. The whole catalogue is a few thousand
+characters — cents at list price, and the Fish models are complimentary on the
+gateway through 18 September 2026.
+
+### When it is not available
+
+`GET /api/voice/manifest` reports it under `synth`: whether the feature is on,
+which model, which credential mechanism was found (`oidc`, `api-key`, or
+`null`). With no credential the tier simply does not exist and the app behaves
+exactly as it did before. If the gateway refuses — no credit on the account, a
+rate limit, a model that has stopped serving — the player retires the tier
+after three failures for the rest of the session rather than paying a network
+round trip per line to rediscover it. A reload tries again.
+
+`VOICE_SYNTH_DISABLED=1` turns it off outright.
+
+## Listening: `/speak`
+
+The gateway's transcription models point the microphone the other way, and
+`/speak` is what that buys: a child sees a word they have already built, taps
+one button, says it, and sees **the English word the model heard**.
+
+That last part is the feature. A child practising pronunciation with nobody
+listening cannot tell whether they are right, and a parent who does not speak
+English cannot tell them either. Seeing `seat` when you said "sit" teaches the
+exact thing that went wrong.
+
+Three rules it holds to, all of them in the code as comments too:
+
+1. **The model is never the authority.** There is no "wrong" — only *match*,
+   *nearly*, and *we heard something else*. A phone microphone in a classroom
+   mishears, and the middle verdict is what makes that survivable.
+   `lib/voice/pronounce.ts` is the whole judgement, kept pure and testable: a
+   Damerau edit distance, plus a consonant-skeleton check so that the vowel
+   confusions Hebrew speakers actually make (`sit`/`seat`, `pan`/`pen` — see
+   `docs/research.md`) land in "nearly" rather than in the red.
+2. **It does not touch mastery.** Nothing in `/speak` writes to `Progress` or
+   grades a skill. `lib/srs.ts` decides what a child has learned from evidence
+   it can trust, and a noisy signal graded into that spine would corrupt the
+   one number the app is careful about.
+3. **Nothing is kept.** The take is transcribed and discarded: not stored, not
+   logged, not attached to anything identifying a child. There is no database
+   in this project and this feature does not add one.
+
+Words are chosen from `progress.knownWords` — words the child has actually
+built — falling back to the tier-1 words for a child who has not built any.
+Letter *sounds* are deliberately not checked this way: "ffff" into a phone is
+not speech, and a transcription model asked whether a seven-year-old produced
+/f/ rather than /v/ answers confidently and near-randomly.
+
+Reached from the road (`/map`) via the 🎤 button, never from the title screen —
+that screen has a one-action budget.
+
 ## How it fits together
 
 ```
 lib/voice/lines.ts      the closed catalogue, derived from the curriculum
 lib/voice/manifest.ts   client: which lines are recorded, and their URLs
-lib/voice/store.ts      server: blob or filesystem, one API
+lib/voice/store.ts      server: blob or filesystem, one API (+ the synth cache)
 lib/voice/guard.ts      who may write
 lib/voice/client.ts     the studio's side of the wire
-lib/audio.ts            playLine() — recorded clip first, TTS fallback second
-app/api/voice/*         manifest / clip (POST, DELETE) / export (zip)
+lib/voice/gateway.ts    server: the AI Gateway credential and headers, once
+lib/voice/synth.ts      server: speaking  — text  -> mp3  (fish-audio/s2.1-pro)
+lib/voice/listen.ts     server: listening — audio -> text (fish-audio/transcribe-1)
+lib/voice/pronounce.ts  pure: is what we heard the word we asked for?
+lib/audio.ts            playLine() — recording, then speech model, then TTS
+app/api/voice/*         manifest / clip / export / synth (GET) / check (POST)
 app/studio              the recording desk
+app/speak               pronunciation practice
 public/voice/           committed clips + index.json
+.voice-synth/           generated clips, dev only, gitignored
 ```
 
 Screens never name a file. They call `sayLetterName("B")`,

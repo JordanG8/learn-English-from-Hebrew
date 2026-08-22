@@ -2,7 +2,10 @@ node_modules
 .next
 out
 .env*.local
+# generated-voice cache, written by `npm run dev` (see lib/voice/synth.ts)
+.voice-synth
 .vercel
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+.env*

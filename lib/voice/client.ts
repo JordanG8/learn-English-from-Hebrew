@@ -16,6 +16,7 @@ import {
   forgetVoiceClip,
   loadVoiceManifest,
   noteVoiceClip,
+  type SynthInfo,
   type VoiceClip,
 } from "./manifest";
 
@@ -49,6 +50,8 @@ export interface StudioStatus {
   writable: boolean;
   passcodeRequired: boolean;
   error: string | null;
+  /** Absent from an older deployment, so the studio treats it as "no". */
+  synth?: SynthInfo;
 }
 
 export async function fetchStudioStatus(): Promise<StudioStatus> {

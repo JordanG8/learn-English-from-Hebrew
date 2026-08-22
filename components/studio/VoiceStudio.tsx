@@ -313,6 +313,16 @@ export function VoiceStudio() {
   const recording = recorder.state === "recording";
   const arming = recorder.state === "arming";
   const blocked = status && !status.writable;
+  /**
+   * Whether this deployment can speak a line nobody has recorded (see
+   * lib/voice/synth.ts). It changes what the studio is FOR: with it on, an
+   * unrecorded line is not silent-or-robotic any more, so the question per
+   * line becomes "is my voice better than this?" — which is a question you
+   * can only answer by hearing them next to each other.
+   */
+  const synth = status?.synth?.enabled && status.synth.credential
+    ? status.synth
+    : null;
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col gap-4 p-4 pb-28">
@@ -469,12 +479,22 @@ export function VoiceStudio() {
           >
             <span aria-hidden>▶️ </span>ההקלטה שלי
           </button>
+          {synth ? (
+            <button
+              type="button"
+              onClick={() => play(`/api/voice/synth/${encodeURIComponent(line.id)}`)}
+              className="min-h-12 rounded-full border-2 border-brand-soft bg-card px-4 text-lg font-bold"
+              title={`ככה הדגם ${synth.model} מקריא את השורה הזאת. ההקלטה הראשונה יכולה לקחת כמה שניות.`}
+            >
+              <span aria-hidden>🎧 </span>קול AI
+            </button>
+          ) : null}
           {line.fallback ? (
             <button
               type="button"
               onClick={() => speakEn(line.fallback!.text, line.fallback!.rate)}
               className="min-h-12 rounded-full border-2 border-brand-soft bg-card px-4 text-lg font-bold"
-              title="ככה זה נשמע היום, בקול הרובוטי"
+              title="ככה זה נשמע בקול הרובוטי של הדפדפן"
             >
               <span aria-hidden>🤖 </span>TTS
             </button>
@@ -503,7 +523,12 @@ export function VoiceStudio() {
             </span>
           ) : (
             <span className="text-ink-soft">
-              <span aria-hidden>⚪ </span>עדיין לא הוקלט — משתמשים ב‑TTS
+              <span aria-hidden>⚪ </span>
+              {synth
+                ? "עדיין לא הוקלט — נשמע בקול ה‑AI"
+                : line.fallback
+                  ? "עדיין לא הוקלט — משתמשים ב‑TTS"
+                  : "עדיין לא הוקלט — ושותק באפליקציה"}
             </span>
           )}
         </p>
