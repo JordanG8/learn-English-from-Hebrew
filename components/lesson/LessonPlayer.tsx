@@ -25,8 +25,8 @@ import {
   CELEBRATION_MS,
 } from "@/lib/pedagogy";
 import { useProgress } from "@/lib/progress-context";
-import { planMixedReview, nextLesson } from "@/lib/srs";
-import { buildReviewLesson, skillsForStep, LESSONS } from "@/lib/curriculum";
+import { planMixedReview } from "@/lib/srs";
+import { buildReviewLesson, skillsForStep } from "@/lib/curriculum";
 import { starsFor, praise, encouragement, revealLine, completionHeadlineHe } from "@/lib/reward";
 import type { Stars } from "@/lib/reward";
 import { playSfx } from "@/lib/audio";
@@ -177,14 +177,19 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
     shownAt.current = Date.now();
   }, []);
 
+  /*
+   * FORWARD IS THROUGH THE ROAD, always.
+   *
+   * This used to jump straight into the next lesson, which quietly threw away
+   * the reward: the pencil moved a pad up the road with nobody watching it
+   * happen, and a level was just a screen that replaced another screen. The
+   * road is where the work becomes distance travelled, so every way out of a
+   * finished lesson goes there, and the road makes the child watch the pencil
+   * arrive before it will let them press play again. See LevelSelect.
+   */
   const goNext = useCallback(() => {
-    const n = nextLesson(progress, LESSONS);
-    if (n && n.id !== lesson?.id) {
-      router.push(n.kind === "chat" ? "/chat" : `/lesson/${n.id}`);
-    } else {
-      router.push("/");
-    }
-  }, [progress, lesson?.id, router]);
+    router.push("/map");
+  }, [router]);
 
   /* --- Render ------------------------------------------------------- */
   if (!ready || !lesson) {
@@ -205,14 +210,14 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
         </h1>
         <p className="text-center text-xl text-ink-soft">{lesson.titleHe}</p>
         <div className="flex w-full max-w-sm flex-col gap-3">
-          <BigButton icon="👉" onClick={goNext}>
-            הבא
+          <BigButton icon="🛣️" onClick={goNext}>
+            למסלול
           </BigButton>
           <SecondaryButton icon="🔁" onClick={restart} className="w-full">
             עוד פעם
           </SecondaryButton>
           <SecondaryButton icon="🏠" onClick={() => router.push("/")} className="w-full">
-            למסלול
+            בית
           </SecondaryButton>
         </div>
       </main>
@@ -242,7 +247,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
      * rides on it.
      */
     <main className="flex min-h-dvh flex-col" style={tintStyle(lesson.id)}>
-      <ScreenHeader title={lesson.titleHe} onBack={() => router.push("/")} />
+      <ScreenHeader title={lesson.titleHe} onBack={() => router.push("/map")} />
       <div className="px-4">
         <StepBar current={index} total={steps.length} />
       </div>

@@ -13,6 +13,15 @@
  * except "locked", and the whole thing has a non-3D way to work — a device
  * without WebGL, or a child who has asked their system for reduced motion,
  * gets a plain list of the same levels rather than a black rectangle.
+ *
+ * THE LEVEL-UP GATE. Finishing a lesson used to drop the child straight into
+ * the next one; the pencil moved up the road with nobody watching, which threw
+ * away the only moment in the app where the work turns into visible distance
+ * travelled. So the road is now the way through, and when it owes a level-up
+ * it pays it first: the pencil is put back on the pad the child last SAW it
+ * on, the cinematic runs with its sound, and the play button stays shut until
+ * the landing has settled. One celebration per level, never skipped, never
+ * repeated — `lib/advancement.ts` is the memory that makes it exactly once.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -25,9 +34,12 @@ import { totalStars } from "@/lib/progress";
 import { tourAttr } from "@/lib/tour";
 import { tintStyle } from "@/lib/palette";
 import { playSfx, primeAudio } from "@/lib/audio";
+import { markStand, seenStand } from "@/lib/advancement";
 import { Walkthrough } from "@/components/onboarding/Walkthrough";
 import { StarRow } from "@/components/ui/kit";
+import { ADVANCE_MS } from "./timing";
 import type { LevelNode, World } from "./scene";
+
 
 export function LevelSelect() {
   const router = useRouter();
@@ -47,6 +59,14 @@ export function LevelSelect() {
   const [worldReady, setWorldReady] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [replay, setReplay] = useState(false);
+  /*
+   * The gate. "running" from the moment the road knows it owes a level-up
+   * until the pencil has settled; "landed" is the slice of that where the
+   * banner is up, which starts on the frame the pencil actually hits the pad.
+   */
+  const [levelUp, setLevelUp] = useState<"idle" | "running" | "landed">("idle");
+  /** The pad the pencil starts the cinematic on, or null when nothing is owed. */
+  const [levelUpFrom, setLevelUpFrom] = useState<number | null>(null);
 
   const gate = useMemo(() => evaluateChatGate(progress), [progress]);
   const stars = totalStars(progress);
@@ -65,6 +85,15 @@ export function LevelSelect() {
 
   /** Where the pencil stands: the last level actually finished. */
   const standIndex = Math.max(0, nextIndex - 1);
+
+  /*
+   * The cinematic's callbacks are built once, when the world is created, so
+   * they cannot read state — everything they need is behind a ref.
+   */
+  const levelUpRef = useRef<"idle" | "running" | "landed">("idle");
+  levelUpRef.current = levelUp;
+  const standRef = useRef(standIndex);
+  standRef.current = standIndex;
 
   const nodes = useMemo<LevelNode[]>(() => {
     const list: LevelNode[] = track.map((l, i) => ({
@@ -90,6 +119,24 @@ export function LevelSelect() {
   const activeNode = nodes[activeIndex];
   const activeLesson = activeNode?.isChat ? null : track[activeIndex];
 
+  /* --- is a level-up owed? -------------------------------------------- */
+  /*
+   * Decided ONCE per visit, before the world is fed. Re-deciding as progress
+   * changes would re-fire the celebration every time a star counter moved.
+   */
+  const decided = useRef(false);
+  useEffect(() => {
+    if (!ready || decided.current) return;
+    decided.current = true;
+    const seen = seenStand(standIndex);
+    if (seen < standIndex) {
+      setLevelUpFrom(seen);
+      setLevelUp("running");
+    } else {
+      markStand(standIndex);
+    }
+  }, [ready, standIndex]);
+
   /* --- mount the world ------------------------------------------------ */
   useEffect(() => {
     if (!ready || flat) return;
@@ -106,9 +153,30 @@ export function LevelSelect() {
         const world = createWorld(canvas, {
           reducedMotion: reduced,
           onSelect: (i) => {
+            // The cinematic is not interruptible. Tapping a pad mid-flight
+            // would move the spotlight out from under the landing.
+            if (levelUpRef.current !== "idle") return;
             playSfx("tap");
             setSelected(i);
             worldRef.current?.focus(i);
+          },
+          onAdvance: (phase) => {
+            if (phase === "launch") {
+              playSfx("hop-launch");
+            } else if (phase === "land") {
+              // The big one, on the frame of the impact. A fanfare that
+              // arrives a tenth of a second late reads as a different event.
+              playSfx("level-up");
+              setLevelUp("landed");
+            } else {
+              markStand(standRef.current);
+              setLevelUp("idle");
+              setLevelUpFrom(null);
+              // Now that the pencil has arrived, glide on to the level it has
+              // unlocked — the last beat of the celebration is seeing where
+              // you are going next.
+              worldRef.current?.focus(standRef.current + 1);
+            }
           },
         });
         worldRef.current = world;
@@ -131,10 +199,50 @@ export function LevelSelect() {
   /* --- feed it the track ---------------------------------------------- */
   useEffect(() => {
     if (!worldReady) return;
-    worldRef.current?.setLevels(nodes, activeIndex, standIndex);
-  }, [worldReady, nodes, activeIndex, standIndex]);
+    // While a level-up is owed the pencil belongs on the pad the child last
+    // saw it on; the cinematic is what moves it off.
+    worldRef.current?.setLevels(nodes, activeIndex, levelUpFrom ?? standIndex);
+  }, [worldReady, nodes, activeIndex, standIndex, levelUpFrom]);
+
+  /* --- pay the level-up ------------------------------------------------ */
+  const played = useRef(false);
+  useEffect(() => {
+    if (!worldReady || played.current) return;
+    if (levelUp !== "running" || levelUpFrom === null) return;
+    played.current = true;
+    // The child arrived here by pressing a button, so the audio context is
+    // already unlocked; this only warms it.
+    primeAudio();
+    worldRef.current?.advance(levelUpFrom, standIndex);
+
+    /*
+     * THE DEAD MAN'S HANDLE. The gate holds the only way forward, so a lost
+     * "done" — a backgrounded tab that stops firing frames, a context lost on
+     * a memory-starved tablet — would strand a child on this screen with a
+     * greyed-out button and no way to say so. Well past the length of the
+     * cinematic, the gate opens by itself.
+     */
+    const bail = window.setTimeout(() => {
+      markStand(standRef.current);
+      setLevelUp("idle");
+      setLevelUpFrom(null);
+    }, ADVANCE_MS + 2500);
+    return () => window.clearTimeout(bail);
+  }, [worldReady, levelUp, levelUpFrom, standIndex]);
+
+  /*
+   * No WebGL means no pencil to watch, and a celebration nobody can see must
+   * not be a locked button. The flat list gets the level-up for free.
+   */
+  useEffect(() => {
+    if (!flat || levelUp === "idle") return;
+    markStand(standIndex);
+    setLevelUp("idle");
+    setLevelUpFrom(null);
+  }, [flat, levelUp, standIndex]);
 
   const play = useCallback(() => {
+    if (levelUpRef.current !== "idle") return;
     primeAudio();
     playSfx("tap");
     if (activeNode?.isChat) router.push("/chat");
@@ -157,6 +265,8 @@ export function LevelSelect() {
 
   const canPlay = Boolean(activeNode?.unlocked);
   const showTutorial = replay || (visitor.showTutorial && !progress.onboarded);
+  /** While the pencil is in the air, this screen has no controls at all. */
+  const held = levelUp !== "idle";
 
   return (
     <>
@@ -180,9 +290,19 @@ export function LevelSelect() {
         )}
 
         {/* --- top bar: three icons, no sentences -------------------- */}
-        <div className="relative flex items-start justify-between p-3">
+        {/*
+          * Everything here fades and stops taking taps while the pencil is
+          * moving. A child who can leave mid-jump has not been shown the jump.
+          */}
+        <div
+          className={`relative flex items-start justify-between p-3 transition-opacity duration-300 ${
+            held ? "pointer-events-none opacity-30" : "opacity-100"
+          }`}
+          aria-hidden={held}
+        >
           <button
             type="button"
+            disabled={held}
             onClick={() => router.push("/")}
             aria-label="חזרה"
             className="grid h-14 w-14 place-items-center rounded-2xl border-[3px] border-white/70 bg-card/90 text-2xl shadow"
@@ -194,6 +314,7 @@ export function LevelSelect() {
             <button
               type="button"
               {...tourAttr("replay-tutorial")}
+              disabled={held}
               onClick={() => setReplay(true)}
               aria-label="הראה לי שוב איך משחקים"
               className="grid h-14 w-14 place-items-center rounded-2xl border-[3px] border-white/70 bg-card/90 text-2xl shadow"
@@ -213,10 +334,31 @@ export function LevelSelect() {
 
         <div className="flex-1" />
 
+        {/*
+          * THE LANDING. One line, appearing on the frame the pencil hits the
+          * pad — a number, not a sentence, because it says the same thing the
+          * pad under the pencil now says.
+          */}
+        {levelUp === "landed" ? (
+          <div
+            role="status"
+            className="pointer-events-none relative flex justify-center px-6 pb-2"
+          >
+            <div className="efh-levelup flex items-center gap-3 rounded-full border-4 border-white/80 bg-go px-6 py-3 shadow-lg">
+              <span aria-hidden className="text-3xl">🎉</span>
+              <span className="text-2xl font-black text-white">
+                שלב {standIndex + 1} הושלם!
+              </span>
+            </div>
+          </div>
+        ) : null}
+
         {/* --- the one action, at thumb height ----------------------- */}
         <div className="relative flex flex-col items-center gap-2 p-4 pb-6">
           <div
-            className="efh-tint flex items-center gap-2 rounded-full px-4 py-1.5 shadow"
+            className={`efh-tint flex items-center gap-2 rounded-full px-4 py-1.5 shadow transition-opacity duration-300 ${
+              held ? "opacity-0" : "opacity-100"
+            }`}
             style={activeLesson ? tintStyle(activeLesson.id) : undefined}
           >
             <span aria-hidden className="text-xl">
@@ -230,17 +372,23 @@ export function LevelSelect() {
             ) : null}
           </div>
 
+          {/*
+            * `held` is the gate. The button is not merely ignored while the
+            * pencil is in the air — it says why, so a child who is jabbing at
+            * it is watching the right thing instead of a dead control.
+            */}
           <button
             type="button"
             {...tourAttr("continue")}
             onClick={play}
-            disabled={!canPlay}
+            disabled={!canPlay || held}
+            aria-live="polite"
             className="efh-play flex w-full max-w-md items-center justify-center gap-3 disabled:opacity-50 disabled:grayscale"
           >
             <span aria-hidden className="text-4xl leading-none">
-              {canPlay ? "▶️" : "🔒"}
+              {held ? "✏️" : canPlay ? "▶️" : "🔒"}
             </span>
-            <span>{canPlay ? "שחק" : "נעול"}</span>
+            <span>{held ? "רגע…" : canPlay ? "שחק" : "נעול"}</span>
           </button>
         </div>
       </main>

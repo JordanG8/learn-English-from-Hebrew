@@ -24,6 +24,8 @@
 
 import * as THREE from "three";
 
+import { ADV_CROUCH, ADV_FLIGHT, ADV_IMPACT, ADV_SETTLE, ADV_STILL } from "./timing";
+
 export interface LevelNode {
   id: string;
   /** Digits on the pad. Not words — a number is not a reading demand. */
@@ -39,6 +41,12 @@ export interface LevelNode {
 export interface WorldOptions {
   onSelect: (index: number) => void;
   reducedMotion: boolean;
+  /**
+   * The beats of the level-up cinematic, as they happen. The scene owns the
+   * timing — it is the thing that knows when the pencil actually lands — and
+   * the UI hangs a sound and a lock on each beat. See `advance()`.
+   */
+  onAdvance?: (phase: "launch" | "land" | "done") => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -98,6 +106,7 @@ function terrainHeight(x: number, z: number): number {
 /* ------------------------------------------------------------------ */
 
 const SPACING = 8.4;
+
 
 /*
  * The camera looks down the (1, 1.08, 1) diagonal, so the direction that
@@ -223,15 +232,63 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
 
   /* --- camera: fixed isometric, like chess.com ---------------------- */
   const ISO = new THREE.Vector3(1, 1.08, 1).normalize();
-  const VIEW = 27; // half-height of the frustum in world units
+  const VIEW = 27; // half-height of the frustum in world units, on a wide screen
   const STANDOFF = 60;
   const camera = new THREE.OrthographicCamera(-VIEW, VIEW, VIEW, -VIEW, 0.1, 260);
   const camTarget = new THREE.Vector3();
   const camGoal = new THREE.Vector3();
 
+  /*
+   * FRAMING IS PER-DEVICE, not a constant.
+   *
+   * A phone is not a small desktop. The frustum that suits a 16:9 window puts
+   * the pad you are standing on in the lower third — which on a 9:19.5 screen
+   * is exactly where the play button lives, so the pencil sat *behind* the
+   * button. Three aspect-driven corrections, all applied in `applyFrustum`:
+   *
+   *   · a portrait screen zooms IN, so a pad is a thumb and not a pea;
+   *   · the frustum is shifted up the screen (`bias`), clearing the HUD;
+   *   · the camera looks less far ahead, so "where I am" stays in frame.
+   *
+   * `zoom` is the pinch, `punch` is the momentary kick on a landing.
+   */
+  let zoom = 1;
+  let punch = 0;
+  let lookAhead = 0.8;
+  let viewW = 1;
+  let viewH = 1;
+
+  const ZOOM_MIN = 0.7;
+  const ZOOM_MAX = 1.75;
+
+  function applyFrustum() {
+    const aspect = viewW / viewH;
+    const portrait = aspect < 1;
+    const halfH = (VIEW * (portrait ? 0.8 : 1)) / (zoom * (1 + punch));
+    // Negative bias raises the visible band, pushing the road up the screen.
+    const bias = -halfH * (portrait ? 0.24 : 0.06);
+    lookAhead = portrait ? 0.25 : 0.8;
+    camera.left = -halfH * aspect;
+    camera.right = halfH * aspect;
+    camera.top = halfH + bias;
+    camera.bottom = -halfH + bias;
+    camera.updateProjectionMatrix();
+  }
+
+  /** Decaying kick applied to the lens on a landing. */
+  let shake = 0;
+
   function placeCamera() {
     camera.position.copy(camTarget).addScaledVector(ISO, STANDOFF);
     camera.lookAt(camTarget);
+    if (shake > 0) {
+      // Applied AFTER lookAt, so the shake is a nudge of the lens rather than
+      // a swing of the whole rig — the horizon stays level.
+      const s = shake * shake * 1.6;
+      camera.position.x += (rnd() - 0.5) * s;
+      camera.position.y += (rnd() - 0.5) * s;
+      camera.position.z += (rnd() - 0.5) * s;
+    }
   }
 
   /* --- light --------------------------------------------------------- */
@@ -497,6 +554,13 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   const padGeo = new THREE.CylinderGeometry(1.55, 1.75, 0.5, 8);
   const stumpGeo = new THREE.CylinderGeometry(1.35, 1.5, 1.1, 8);
   const ringGeo = new THREE.TorusGeometry(1.85, 0.12, 6, 20);
+  /*
+   * TAP TARGET. A pad is about 40 physical pixels across on a phone, and a
+   * fingertip is nearer 45 — so an accurate tap on the number still missed.
+   * Every pad carries an invisible column, roughly twice as wide, and that is
+   * what the raycaster actually hits. Nothing about the picture changes.
+   */
+  const hitGeo = new THREE.CylinderGeometry(3.1, 3.1, 7, 6);
 
   interface Pad {
     group: THREE.Group;
@@ -589,7 +653,14 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
         new THREE.ExtrudeGeometry(chevron, { depth: 0.22, bevelEnabled: false }),
         new THREE.MeshLambertMaterial({ color: 0x2fbd63, emissive: 0x1d7d40 }),
       );
-      mark.position.y = 8.4;
+      /*
+       * Height is a readability decision, not a taste one: seen down an
+       * isometric camera, "up" is also "further up the screen", so a chevron
+       * parked eight units over its pad drew level with the pad two ahead and
+       * pointed at the wrong one. At four it stays over the pad it means —
+       * which matters more now that a phone zooms in on all this.
+       */
+      mark.position.y = 4.4;
       mark.scale.setScalar(1.5);
       mark.name = "chevron";
       mark.castShadow = false;
@@ -609,6 +680,15 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
         g.add(s);
       }
     }
+
+    const hit = new THREE.Mesh(
+      hitGeo,
+      new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }),
+    );
+    hit.position.y = 3;
+    hit.renderOrder = -1;
+    hit.name = "hit";
+    g.add(hit);
 
     padGroup.add(g);
     return { group: g, index, node, ring, top };
@@ -672,11 +752,119 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   blob.rotation.x = -Math.PI / 2;
   scene.add(blob);
 
+  /* --- level-up effects: sparks and a shockwave ------------------------ */
+  /*
+   * Pooled and hidden up front. Allocating a geometry in the middle of the one
+   * animation the whole reward hangs on is how you get a stutter exactly where
+   * it hurts most.
+   */
+  const SPARK_COUNT = 26;
+  const sparkGeo = new THREE.PlaneGeometry(0.62, 0.62);
+  const sparkMat = new THREE.MeshBasicMaterial({
+    color: 0xffd257,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const sparks = new THREE.InstancedMesh(sparkGeo, sparkMat, SPARK_COUNT);
+  sparks.frustumCulled = false;
+  sparks.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  sparks.visible = false;
+  scene.add(sparks);
+  const sparkState = Array.from({ length: SPARK_COUNT }, () => ({
+    p: new THREE.Vector3(),
+    v: new THREE.Vector3(),
+    life: 0,
+    spin: 0,
+    rot: 0,
+  }));
+
+  const shockMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const shock = new THREE.Mesh(new THREE.RingGeometry(0.78, 1, 36), shockMat);
+  shock.rotation.x = -Math.PI / 2;
+  shock.visible = false;
+  scene.add(shock);
+  let shockT = -1;
+
+  const _m = new THREE.Matrix4();
+  const _q = new THREE.Quaternion();
+  const _roll = new THREE.Quaternion();
+  const _sc = new THREE.Vector3();
+  const _axisZ = new THREE.Vector3(0, 0, 1);
+
+  /** Throw `count` sparks up and out from `at`. */
+  function burst(at: THREE.Vector3, up: number, count: number) {
+    if (opts.reducedMotion) return;
+    for (let i = 0; i < Math.min(count, SPARK_COUNT); i++) {
+      const st = sparkState[i];
+      const a = rnd() * Math.PI * 2;
+      const speed = 3 + rnd() * 6;
+      st.p.set(at.x, at.y + 1.7, at.z);
+      st.v.set(Math.cos(a) * speed, up * (0.45 + rnd()), Math.sin(a) * speed);
+      st.life = 0.5 + rnd() * 0.45;
+      st.spin = (rnd() - 0.5) * 11;
+      st.rot = rnd() * Math.PI;
+    }
+    sparks.visible = true;
+  }
+
+  function updateSparks(dt: number) {
+    if (!sparks.visible) return;
+    let longest = 0;
+    for (let i = 0; i < SPARK_COUNT; i++) {
+      const st = sparkState[i];
+      if (st.life > 0) {
+        st.life -= dt;
+        st.v.y -= 15 * dt;
+        st.p.addScaledVector(st.v, dt);
+        st.rot += st.spin * dt;
+        if (st.life > longest) longest = st.life;
+      }
+      const k = Math.max(0, Math.min(1, st.life * 2.4));
+      // Billboarded, or a flat quad seen edge-on from an isometric camera is
+      // simply not there — the same trap the chevron fell into.
+      _q.copy(camera.quaternion).multiply(_roll.setFromAxisAngle(_axisZ, st.rot));
+      _sc.setScalar(k);
+      _m.compose(st.p, _q, _sc);
+      sparks.setMatrixAt(i, _m);
+    }
+    sparks.instanceMatrix.needsUpdate = true;
+    sparkMat.opacity = Math.min(1, longest * 3);
+    if (longest <= 0) sparks.visible = false;
+  }
+
+  function updateShock(dt: number) {
+    if (shockT < 0) return;
+    shockT += dt;
+    const k = shockT / 0.6;
+    if (k >= 1) {
+      shockT = -1;
+      shock.visible = false;
+      return;
+    }
+    shock.scale.setScalar(1 + k * 5.6);
+    shockMat.opacity = (1 - k) * 0.8;
+  }
+
   /* --- state ---------------------------------------------------------- */
   let levels: LevelNode[] = [];
   let focusIndex = 0;
   let playerIndex = 0;
   let hop: { from: number; to: number; t: number } | null = null;
+  /**
+   * The level-up cinematic. `phase` counts the beats already announced; `still`
+   * is the reduced-motion version, which has all of the event and none of the
+   * movement.
+   */
+  let advancing: { from: number; to: number; t: number; phase: number; still: boolean } | null =
+    null;
   let road: THREE.Mesh | null = null;
   let built = false;
   let disposed = false;
@@ -688,7 +876,12 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     for (const p of pads) {
       p.group.traverse((o) => {
         if (o instanceof THREE.Mesh) {
-          if (o.geometry !== padGeo && o.geometry !== stumpGeo && o.geometry !== ringGeo) {
+          if (
+            o.geometry !== padGeo &&
+            o.geometry !== stumpGeo &&
+            o.geometry !== ringGeo &&
+            o.geometry !== hitGeo
+          ) {
             o.geometry.dispose();
           }
           const m = o.material as THREE.Material | THREE.Material[];
@@ -784,26 +977,137 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     if (pad && pad.node.unlocked) opts.onSelect(pad.index);
   }
 
-  /* --- pointer: tap to choose, drag to look ahead ---------------------- */
-  let down: { x: number; y: number; t: number } | null = null;
+  /* --- pointer: tap to choose, drag to travel, pinch to zoom ----------- */
+  /*
+   * WHAT WAS WRONG WITH THIS ON A PHONE, and what each part fixes:
+   *
+   *   · Drag was vertical pixels times a magic 0.035. On a short phone that
+   *     is a different distance than on a tablet, and a drag along the road —
+   *     which runs diagonally up the screen — did nothing sideways. Now the
+   *     finger delta is projected onto the road's own direction *on screen*
+   *     and divided by the on-screen length of one level, so one finger-width
+   *     of travel moves the same number of levels on every device at every
+   *     zoom.
+   *   · The content did not follow the finger. It does now: drag down and the
+   *     road ahead comes toward you, exactly like scrolling anything else.
+   *   · Letting go stopped dead. Now it flicks, with friction and a rubber
+   *     band at both ends, and drifts back to where you are when you rest.
+   *   · There was no zoom at all. Two fingers now do the obvious thing.
+   */
+  // Bounded by the pads that actually exist: WINDOW_BACK/WINDOW_FWD decide how
+  // much road is built around the focus, and panning past that end shows an
+  // empty track, which reads as the game having run out.
+  const PAN_MIN = -3;
+  const PAN_MAX = 7;
+  const RECENTRE_AFTER = 5000; // ms of stillness before the camera drifts home
+
+  const pointers = new Map<number, { x: number; y: number }>();
+  let down: { x: number; y: number; t: number; id: number; pan: number } | null = null;
   let panOffset = 0;
   let panGoal = 0;
+  let panVel = 0; // levels per second, carried out of a flick
+  let dragged = false;
+  let pinchPx = 0;
+  let pinchZoom = 1;
+  let lastTouchAt = 0;
+
+  const _pa = new THREE.Vector3();
+  const _pb = new THREE.Vector3();
+  const _dir = new THREE.Vector2();
+
+  /**
+   * The road's direction on screen, and how many screen pixels one level is.
+   * Measured from the projection rather than assumed, so it stays right under
+   * pinch zoom, rotation, and the aspect-driven framing above.
+   */
+  function roadOnScreen(): { dir: THREE.Vector2; pxPerLevel: number } {
+    const rect = canvas.getBoundingClientRect();
+    const at = Math.round(focusIndex + panOffset);
+    _pa.copy(nodePosition(at)).project(camera);
+    _pb.copy(nodePosition(at + 1)).project(camera);
+    const dx = ((_pb.x - _pa.x) * rect.width) / 2;
+    const dy = (-(_pb.y - _pa.y) * rect.height) / 2;
+    const len = Math.hypot(dx, dy) || 1;
+    _dir.set(dx / len, dy / len);
+    return { dir: _dir, pxPerLevel: len };
+  }
+
+  /** Past either end the pan still moves, but at a third — it pushes back. */
+  function rubber(v: number): number {
+    if (v < PAN_MIN) return PAN_MIN + (v - PAN_MIN) * 0.35;
+    if (v > PAN_MAX) return PAN_MAX + (v - PAN_MAX) * 0.35;
+    return v;
+  }
 
   const onDown = (e: PointerEvent) => {
-    down = { x: e.clientX, y: e.clientY, t: performance.now() };
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    lastTouchAt = performance.now();
+    panVel = 0;
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      pinchPx = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      pinchZoom = zoom;
+      down = null; // a second finger cancels the tap in progress
+      return;
+    }
+    dragged = false;
+    down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, pan: panGoal };
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {
+      /* not every browser allows capture on every pointer type */
+    }
   };
+
   const onMove = (e: PointerEvent) => {
-    if (!down) return;
-    const dy = e.clientY - down.y;
-    // Dragging down walks the camera back along the road, up walks it forward.
-    panGoal = THREE.MathUtils.clamp(panOffset - dy * 0.035, -3, 10);
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    lastTouchAt = performance.now();
+
+    if (pointers.size >= 2) {
+      const [a, b] = [...pointers.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      zoom = THREE.MathUtils.clamp((pinchZoom * d) / pinchPx, ZOOM_MIN, ZOOM_MAX);
+      applyFrustum();
+      return;
+    }
+    if (!down || e.pointerId !== down.id) return;
+
+    const fdx = e.clientX - down.x;
+    const fdy = e.clientY - down.y;
+    if (!dragged && Math.hypot(fdx, fdy) > 12) dragged = true;
+    if (!dragged) return;
+
+    const { dir, pxPerLevel } = roadOnScreen();
+    // Content follows the finger: pulling down brings the road ahead to you.
+    const along = fdx * dir.x + fdy * dir.y;
+    const next = down.pan - along / pxPerLevel;
+    panVel = (next - panGoal) * 9;
+    panGoal = rubber(next);
   };
+
   const onUp = (e: PointerEvent) => {
-    if (!down) return;
-    const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+    pointers.delete(e.pointerId);
+    lastTouchAt = performance.now();
+    try {
+      canvas.releasePointerCapture(e.pointerId);
+    } catch {
+      /* see above */
+    }
+    if (pointers.size === 1) {
+      // Lifting one of two fingers must not teleport the view: re-anchor the
+      // drag on whichever finger is still down.
+      const [only] = [...pointers.entries()];
+      down = { x: only[1].x, y: only[1].y, t: performance.now(), id: only[0], pan: panGoal };
+      dragged = true;
+      return;
+    }
+    if (!down || e.pointerId !== down.id) return;
     const quick = performance.now() - down.t < 500;
-    if (moved < 10 && quick) pick(e.clientX, e.clientY);
-    else panOffset = panGoal;
+    if (!dragged && quick) {
+      panVel = 0;
+      pick(e.clientX, e.clientY);
+    }
     down = null;
   };
   canvas.addEventListener("pointerdown", onDown);
@@ -811,17 +1115,27 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   canvas.addEventListener("pointerup", onUp);
   canvas.addEventListener("pointercancel", onUp);
 
+  // A phone browser will happily zoom the *page* on a pinch over a canvas, and
+  // scroll the page on a wheel. Both belong to the world here.
+  const onWheel = (e: WheelEvent) => {
+    e.preventDefault();
+    lastTouchAt = performance.now();
+    if (e.ctrlKey) {
+      zoom = THREE.MathUtils.clamp(zoom * (1 - e.deltaY * 0.01), ZOOM_MIN, ZOOM_MAX);
+      applyFrustum();
+    } else {
+      const { pxPerLevel } = roadOnScreen();
+      panGoal = rubber(panGoal + e.deltaY / pxPerLevel);
+    }
+  };
+  canvas.addEventListener("wheel", onWheel, { passive: false });
+
   /* --- resize ---------------------------------------------------------- */
   function resize() {
-    const w = canvas.clientWidth || 1;
-    const h = canvas.clientHeight || 1;
-    const aspect = w / h;
-    camera.left = -VIEW * aspect;
-    camera.right = VIEW * aspect;
-    camera.top = VIEW;
-    camera.bottom = -VIEW;
-    camera.updateProjectionMatrix();
-    renderer.setSize(w, h, false);
+    viewW = canvas.clientWidth || 1;
+    viewH = canvas.clientHeight || 1;
+    applyFrustum();
+    renderer.setSize(viewW, viewH, false);
   }
   const ro = new ResizeObserver(resize);
   ro.observe(canvas);
@@ -836,16 +1150,52 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     const dt = Math.min(clock.getDelta(), 0.05);
     const t = clock.elapsedTime;
 
+    /* --- pan physics: flick, friction, rubber band, drift home -------- */
+    if (!down && !opts.reducedMotion) {
+      if (Math.abs(panVel) > 0.01) {
+        panGoal = rubber(panGoal + panVel * dt);
+        panVel *= Math.pow(0.12, dt); // friction
+      } else {
+        panVel = 0;
+      }
+      // Past an end, the band pulls back.
+      const clamped = THREE.MathUtils.clamp(panGoal, PAN_MIN, PAN_MAX);
+      if (clamped !== panGoal) {
+        panGoal += (clamped - panGoal) * Math.min(1, dt * 9);
+        panVel = 0;
+      } else if (
+        panGoal !== 0 &&
+        Math.abs(panVel) < 0.05 &&
+        performance.now() - lastTouchAt > RECENTRE_AFTER
+      ) {
+        // Nobody is holding it, so the road comes back to where the child is
+        // standing. Slowly — this must read as the camera settling, never as
+        // the view being snatched away mid-look.
+        panGoal += (0 - panGoal) * Math.min(1, dt * 0.9);
+        if (Math.abs(panGoal) < 0.02) panGoal = 0;
+      }
+    }
+
     // Camera: sit between the pencil and the level ahead, plus whatever the
-    // finger has dragged.
+    // finger has dragged. During the level-up the camera belongs to the
+    // cinematic and follows the landing instead.
     const shown = focusIndex + panOffset;
-    // Look a couple of levels PAST the focus: that pushes the pad you are on
-    // into the lower third and leaves the road climbing away above it, which is
-    // the whole point of the perspective.
-    const look = nodePosition(shown + 0.8);
+    // Look PAST the focus: that pushes the pad you are on down the frame and
+    // leaves the road climbing away above it, which is the whole point of the
+    // perspective. How far past is `lookAhead`, which a phone shortens so the
+    // pencil clears the play button.
+    const look = advancing
+      ? nodePosition(advancing.to + lookAhead * 0.5)
+      : nodePosition(shown + lookAhead);
     camGoal.set(look.x, look.y + 1.2, look.z);
-    camTarget.lerp(camGoal, opts.reducedMotion ? 1 : 1 - Math.pow(0.002, dt));
-    panOffset += (panGoal - panOffset) * (opts.reducedMotion ? 1 : Math.min(1, dt * 6));
+    camTarget.lerp(camGoal, opts.reducedMotion ? 1 : 1 - Math.pow(advancing ? 0.0008 : 0.002, dt));
+    panOffset += (panGoal - panOffset) * (opts.reducedMotion ? 1 : Math.min(1, dt * 8));
+    if (shake > 0) shake = Math.max(0, shake - dt * 2.2);
+    if (punch !== 0) {
+      punch += (0 - punch) * Math.min(1, dt * 6);
+      if (Math.abs(punch) < 0.002) punch = 0;
+      applyFrustum();
+    }
     placeCamera();
     sun.target.position.copy(camTarget);
     sun.position.copy(camTarget).add(new THREE.Vector3(14, 26, 10));
@@ -853,7 +1203,86 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     // The hop: a parabola with a squash on landing. This is the whole
     // "you moved forward" feedback, so it is worth the twelve lines.
     const PSCALE = 1.85;
-    if (hop) {
+    if (advancing) {
+      /*
+       * THE LEVEL-UP. This is the only thing on this screen a child is made to
+       * wait for, so it has to earn the wait: a crouch, a launch with a full
+       * turn in the air, a landing that hits hard enough to shake the lens and
+       * throw sparks, and an elastic settle. The beats are announced through
+       * `opts.onAdvance` so the sound lands on the frame, not near it.
+       */
+      advancing.t += dt;
+      const a = nodePosition(advancing.from);
+      const b = nodePosition(advancing.to);
+      const t0 = advancing.t;
+
+      if (advancing.still) {
+        /*
+         * REDUCED MOTION IS NOT NO CELEBRATION. Asking a system not to animate
+         * is not asking it to say nothing: the pencil is simply already on the
+         * new pad, and the beat still fires — so the sound plays, the banner
+         * appears, and the gate holds for long enough to read it.
+         */
+        player.position.copy(b);
+        player.scale.setScalar(PSCALE);
+        player.rotation.set(0, 0, 0);
+        if (advancing.phase < 2) {
+          advancing.phase = 2;
+          opts.onAdvance?.("land");
+        } else if (t0 >= ADV_STILL) {
+          advancing = null;
+          opts.onAdvance?.("done");
+        }
+      } else if (t0 < ADV_CROUCH) {
+        const k = t0 / ADV_CROUCH;
+        const dip = Math.sin(k * Math.PI);
+        player.position.copy(a);
+        player.position.y -= dip * 0.5;
+        const sq = 1 - dip * 0.3;
+        player.scale.set(PSCALE / Math.sqrt(sq), PSCALE * sq, PSCALE / Math.sqrt(sq));
+        player.rotation.set(0, 0, -dip * 0.16);
+      } else if (t0 < ADV_CROUCH + ADV_FLIGHT) {
+        if (advancing.phase < 1) {
+          advancing.phase = 1;
+          burst(a, 7, 12);
+          opts.onAdvance?.("launch");
+        }
+        const k = (t0 - ADV_CROUCH) / ADV_FLIGHT;
+        player.position.lerpVectors(a, b, k * k * (3 - 2 * k));
+        player.position.y += Math.sin(k * Math.PI) * 9.5;
+        player.rotation.set(0, k * Math.PI * 2, Math.sin(k * Math.PI * 2) * 0.22);
+        const st = 1 + Math.sin(k * Math.PI) * 0.14;
+        player.scale.set(PSCALE * (2 - st), PSCALE * st, PSCALE * (2 - st));
+      } else if (t0 < ADV_CROUCH + ADV_FLIGHT + ADV_IMPACT) {
+        if (advancing.phase < 2) {
+          advancing.phase = 2;
+          burst(b, 6, SPARK_COUNT);
+          shock.position.set(b.x, b.y + 1.63, b.z);
+          shock.scale.setScalar(1);
+          shock.visible = !opts.reducedMotion;
+          shockT = opts.reducedMotion ? -1 : 0;
+          shake = opts.reducedMotion ? 0 : 0.85;
+          punch = opts.reducedMotion ? 0 : -0.07;
+          opts.onAdvance?.("land");
+        }
+        const k = (t0 - ADV_CROUCH - ADV_FLIGHT) / ADV_IMPACT;
+        const sq = 1 - Math.sin(k * Math.PI) * 0.34;
+        player.position.copy(b);
+        player.rotation.set(0, 0, 0);
+        player.scale.set(PSCALE / Math.sqrt(sq), PSCALE * sq, PSCALE / Math.sqrt(sq));
+      } else {
+        const k = Math.min(1, (t0 - ADV_CROUCH - ADV_FLIGHT - ADV_IMPACT) / ADV_SETTLE);
+        const e = Math.sin(k * Math.PI * 2.6) * (1 - k) * 0.17;
+        player.position.copy(b);
+        player.rotation.set(0, 0, 0);
+        player.scale.set(PSCALE * (1 - e), PSCALE * (1 + e), PSCALE * (1 - e));
+        if (k >= 1) {
+          advancing = null;
+          player.scale.setScalar(PSCALE);
+          opts.onAdvance?.("done");
+        }
+      }
+    } else if (hop) {
       hop.t += dt * 1.9;
       const k = Math.min(1, hop.t);
       const a = nodePosition(hop.from);
@@ -882,7 +1311,19 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       player.rotation.y = opts.reducedMotion ? 0 : Math.sin(t * 0.9) * 0.12;
     }
     player.position.y += 1.6; // stand on the pad, not in it
-    blob.position.set(player.position.x, nodePosition(playerIndex).y + 1.58, player.position.z);
+
+    // The contact shadow sits on the pad the pencil is over, and shrinks as it
+    // leaves the ground — a shadow that stays full size under a pencil nine
+    // units up is what makes a jump look like a slide.
+    const groundY = terrainHeight(player.position.x, player.position.z) + 1.58;
+    const air = Math.max(0, player.position.y - groundY - 0.1);
+    blob.position.set(player.position.x, groundY, player.position.z);
+    const k = Math.max(0.28, 1 - air * 0.075);
+    blob.scale.setScalar(k);
+    (blob.material as THREE.MeshBasicMaterial).opacity = 0.22 * k;
+
+    updateSparks(dt);
+    updateShock(dt);
 
     if (!opts.reducedMotion) {
       for (const s of swayers) {
@@ -898,7 +1339,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
           p.top.position.y = 1.3 + Math.sin(t * 2.2) * 0.07;
           const mark = p.group.getObjectByName("chevron");
           if (mark) {
-            mark.position.y = 8.4 + Math.sin(t * 2.6) * 0.38;
+            mark.position.y = 4.4 + Math.sin(t * 2.6) * 0.38;
             // Billboard: a fixed rotation shows this edge-on from an
             // isometric camera, which is exactly how it disappeared.
             mark.quaternion.copy(camera.quaternion);
@@ -955,6 +1396,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
         frame();
       }
       refreshPads();
+      if (advancing) return; // the cinematic owns the pencil until it finishes
       if (playerIndex !== player) {
         if (opts.reducedMotion) playerIndex = player;
         else hop = { from: playerIndex, to: player, t: 0 };
@@ -962,14 +1404,46 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       }
     },
 
-    /** Move the spotlight — used when a child taps a different pad. */
+    /**
+     * Move the spotlight — used when a child taps a different pad.
+     *
+     * It deliberately does NOT move the pencil any more. The pencil is where
+     * the child has actually got to, and the one thing that moves it is
+     * finishing a level; making a tap teleport it spent the only piece of
+     * feedback the road has on browsing.
+     */
     focus(index: number) {
       focusIndex = index;
-      panOffset = 0;
       panGoal = 0;
+      panVel = 0;
+      lastTouchAt = performance.now();
       refreshPads();
-      if (!opts.reducedMotion) hop = { from: playerIndex, to: index, t: 0 };
-      playerIndex = index;
+    },
+
+    /**
+     * THE LEVEL-UP. Play the full cinematic from `from` to `to` and report each
+     * beat through `opts.onAdvance`. The caller holds the play button shut
+     * until "done" comes back — see LevelSelect.
+     *
+     * Under reduced motion the pencil is simply put down on the new pad and
+     * the beats fire on a short still hold — the sound and the banner are not
+     * motion, and a child who asked their system to stop things moving has not
+     * asked to stop being told they finished a level.
+     */
+    advance(from: number, to: number) {
+      focusIndex = to;
+      panGoal = 0;
+      panOffset = 0;
+      panVel = 0;
+      playerIndex = to;
+      hop = null;
+      refreshPads();
+      if (from === to) {
+        advancing = null;
+        opts.onAdvance?.("done");
+        return;
+      }
+      advancing = { from, to, t: 0, phase: 0, still: opts.reducedMotion };
     },
 
     dispose() {
@@ -980,6 +1454,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);
       canvas.removeEventListener("pointercancel", onUp);
+      canvas.removeEventListener("wheel", onWheel);
       clearPads();
       scene.traverse((o) => {
         if (o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh) {

@@ -53,6 +53,33 @@ function audioContext(): AudioContext | null {
   }
 }
 
+/**
+ * THE OUTPUT BUS. Everything synthesised goes through one compressor rather
+ * than straight at the speakers: the level-up stacks four layers at once, and
+ * four envelopes peaking together on a phone speaker is a crackle, not a
+ * fanfare. Made lazily with the context, and rebuilt if the context is.
+ */
+let bus: DynamicsCompressorNode | null = null;
+let busCtx: AudioContext | null = null;
+
+function output(ac: AudioContext): AudioNode {
+  if (bus && busCtx === ac) return bus;
+  try {
+    const c = ac.createDynamicsCompressor();
+    c.threshold.value = -14;
+    c.knee.value = 26;
+    c.ratio.value = 5;
+    c.attack.value = 0.004;
+    c.release.value = 0.16;
+    c.connect(ac.destination);
+    bus = c;
+    busCtx = ac;
+    return c;
+  } catch {
+    return ac.destination;
+  }
+}
+
 export function setMuted(value: boolean): void {
   muted = value;
 }
@@ -74,7 +101,7 @@ function tone(freq: number, startAt: number, durS: number, gain = 0.14): void {
       0.0001,
       ac.currentTime + startAt + durS,
     );
-    osc.connect(g).connect(ac.destination);
+    osc.connect(g).connect(output(ac));
     osc.start(ac.currentTime + startAt);
     osc.stop(ac.currentTime + startAt + durS + 0.02);
   } catch {
@@ -82,7 +109,167 @@ function tone(freq: number, startAt: number, durS: number, gain = 0.14): void {
   }
 }
 
-export type Sfx = "tap" | "correct" | "wrong" | "letter-lands" | "celebrate";
+/* ------------------------------------------------------------------ */
+/* The level-up sound                                                   */
+/* ------------------------------------------------------------------ */
+/*
+ * Everything above this point is a beep, and a beep is the right size for
+ * "you pressed a key". Finishing a level is not that, and the difference has
+ * to be audible in the first fifty milliseconds or the reward reads as the
+ * same event as a tap.
+ *
+ * So the level-up is built the way an actual sound designer builds one, out of
+ * four layers that do four different jobs, and still with no asset files:
+ *
+ *   · a WHOOSH — filtered noise sweeping up — under the jump, so the flight
+ *     has a sound and not just the landing;
+ *   · a THUMP — a sine dropped fast through its own pitch — which is the part
+ *     you feel rather than hear, and the reason the landing has weight;
+ *   · an IMPACT — a bright, very short noise crack — which is the part that
+ *     makes the thump read as hitting something;
+ *   · a FANFARE — a major arpeggio on bell voices over a held fifth — which is
+ *     the part a child will hum.
+ *
+ * They are stacked with real envelopes (fast attack, exponential decay) and a
+ * shared soft-clip on the way out, so four layers at once cannot crackle.
+ */
+
+let noiseBuf: AudioBuffer | null = null;
+
+/** One second of white noise, made once and reused by every whoosh. */
+function noiseBuffer(ac: AudioContext): AudioBuffer {
+  if (noiseBuf && noiseBuf.sampleRate === ac.sampleRate) return noiseBuf;
+  const buf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  noiseBuf = buf;
+  return buf;
+}
+
+/** Filtered noise sweeping between two cutoffs — a jump, or a landing crack. */
+function whoosh(
+  startAt: number,
+  durS: number,
+  fromHz: number,
+  toHz: number,
+  gain: number,
+  type: BiquadFilterType = "bandpass",
+): void {
+  const ac = audioContext();
+  if (!ac) return;
+  try {
+    const t0 = ac.currentTime + startAt;
+    const src = ac.createBufferSource();
+    src.buffer = noiseBuffer(ac);
+    const f = ac.createBiquadFilter();
+    f.type = type;
+    f.Q.value = type === "bandpass" ? 1.1 : 0.7;
+    f.frequency.setValueAtTime(fromHz, t0);
+    f.frequency.exponentialRampToValueAtTime(toHz, t0 + durS);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + durS * 0.35);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + durS);
+    src.connect(f).connect(g).connect(output(ac));
+    src.start(t0);
+    src.stop(t0 + durS + 0.05);
+  } catch {
+    /* fail silent */
+  }
+}
+
+/** The weight of a landing: a sine dropped fast through its own pitch. */
+function thump(startAt: number, gain = 0.5): void {
+  const ac = audioContext();
+  if (!ac) return;
+  try {
+    const t0 = ac.currentTime + startAt;
+    const osc = ac.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(190, t0);
+    osc.frequency.exponentialRampToValueAtTime(46, t0 + 0.17);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.42);
+    osc.connect(g).connect(output(ac));
+    osc.start(t0);
+    osc.stop(t0 + 0.46);
+  } catch {
+    /* fail silent */
+  }
+}
+
+/**
+ * A bell: a triangle fundamental plus two quiet, slightly sharp partials.
+ * Three cheap oscillators are the least it takes to stop sounding like a test
+ * tone, and a struck bell is what says "something just happened" without
+ * needing a sample.
+ */
+function bell(freq: number, startAt: number, durS: number, gain = 0.16): void {
+  const ac = audioContext();
+  if (!ac) return;
+  try {
+    const t0 = ac.currentTime + startAt;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.014);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + durS);
+    for (const [mult, level, type] of [
+      [1, 1, "triangle"],
+      [2.01, 0.34, "sine"],
+      [3.02, 0.12, "sine"],
+    ] as const) {
+      const o = ac.createOscillator();
+      o.type = type;
+      o.frequency.value = freq * mult;
+      const lg = ac.createGain();
+      lg.gain.value = level;
+      o.connect(lg).connect(g);
+      o.start(t0);
+      o.stop(t0 + durS + 0.05);
+    }
+    g.connect(output(ac));
+  } catch {
+    /* fail silent */
+  }
+}
+
+/** A held, quiet pad under the arpeggio, so the fanfare has a floor. */
+function swell(freq: number, startAt: number, durS: number, gain = 0.07): void {
+  const ac = audioContext();
+  if (!ac) return;
+  try {
+    const t0 = ac.currentTime + startAt;
+    const o = ac.createOscillator();
+    o.type = "sawtooth";
+    o.frequency.value = freq;
+    const f = ac.createBiquadFilter();
+    f.type = "lowpass";
+    f.frequency.setValueAtTime(500, t0);
+    f.frequency.linearRampToValueAtTime(1900, t0 + durS * 0.5);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.09);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + durS);
+    o.connect(f).connect(g).connect(output(ac));
+    o.start(t0);
+    o.stop(t0 + durS + 0.05);
+  } catch {
+    /* fail silent */
+  }
+}
+
+export type Sfx =
+  | "tap"
+  | "correct"
+  | "wrong"
+  | "letter-lands"
+  | "celebrate"
+  /** The pencil leaves the pad. Pairs with "level-up". */
+  | "hop-launch"
+  /** The pencil lands on the next level. The big one. */
+  | "level-up";
 
 /** Fail-silent UI sound. Never awaits, never throws. */
 export function playSfx(name: Sfx): void {
@@ -106,6 +293,26 @@ export function playSfx(name: Sfx): void {
     case "celebrate":
       [523, 659, 784, 1046, 1318].forEach((f, i) => tone(f, i * 0.1, 0.34, 0.13));
       break;
+    case "hop-launch":
+      // Rising, so it points at the landing that is about to happen.
+      whoosh(0, 0.36, 240, 2100, 0.1);
+      tone(392, 0, 0.1, 0.06);
+      tone(587, 0.07, 0.12, 0.06);
+      break;
+    case "level-up": {
+      // Weight first…
+      thump(0, 0.55);
+      whoosh(0, 0.14, 5200, 900, 0.16, "highpass");
+      // …then the tune. C major, up and over the octave, with the fifth held
+      // underneath so the last note lands on a chord and not on a beep.
+      const ARP = [523.25, 659.25, 783.99, 1046.5];
+      ARP.forEach((f, i) => bell(f, 0.06 + i * 0.075, 0.55 + i * 0.12, 0.17));
+      bell(1567.98, 0.36, 1.5, 0.1);
+      bell(2093, 0.42, 1.3, 0.055);
+      swell(261.63, 0.05, 1.25, 0.06);
+      swell(392, 0.05, 1.25, 0.045);
+      break;
+    }
   }
 }
 
