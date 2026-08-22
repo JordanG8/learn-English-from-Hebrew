@@ -20,25 +20,38 @@
  *     CHAT_NEW_WORDS_MAX regardless of what the client asks for.
  *  6. OUTPUT VALIDATION. The reply is scanned for English outside the allowed
  *     set; one stricter retry, then a safe Hebrew fallback.
+ *  7. THE TOOL CANNOT INVENT WORK. `wordTemplate` is the model's only tool.
+ *     It names a word and nothing else: the spelling, the emoji, the Hebrew
+ *     gloss and which letters are blanked all come from the app's own word
+ *     bank (lib/word-template.ts), and a word outside the child's mastered
+ *     lexicon is refused with a reason rather than rendered.
  *
  * Nothing about the conversation is logged or stored. There is no database.
  */
 
 import { NextResponse } from "next/server";
-import { generateText } from "ai";
+import { generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import {
   CHAT_HISTORY_TURNS,
   CHAT_MODEL,
   CHAT_NEW_WORDS_MAX,
+  CHAT_TEMPLATE_MAX_PER_TURN,
 } from "@/lib/pedagogy";
 import {
   FALLBACK_REPLY_HE,
+  TEMPLATE_INTRO_HE,
   checkReply,
   sanitizeLetters,
   sanitizeLexicon,
   systemPrompt,
 } from "@/lib/chat-prompt";
+import {
+  TEMPLATE_SHAPES,
+  buildTemplates,
+  templateMask,
+  type WordTemplate,
+} from "@/lib/word-template";
 
 export const runtime = "nodejs";
 /** Never cache a conversation turn. */
@@ -71,6 +84,8 @@ interface ChatOk {
   reply: string;
   /** New words introduced this turn, so the UI can mark them. */
   novel: string[];
+  /** Fill-in-the-blank exercises the model asked for this turn. */
+  templates: WordTemplate[];
 }
 interface ChatDegraded {
   ok: false;
@@ -115,13 +130,63 @@ export async function POST(req: Request): Promise<NextResponse<ChatOk | ChatDegr
 
   const baseSystem = systemPrompt({ lexicon, letters, newWordBudget: budget });
 
+  /*
+   * Templates the model asked for during the CURRENT attempt. `ask` clears it,
+   * so a turn that has to be regenerated cannot carry an exercise over from
+   * the reply that was thrown away.
+   */
+  let templates: WordTemplate[] = [];
+
+  const tools = {
+    wordTemplate: tool({
+      description:
+        "Turn one or two words the child has already mastered into a " +
+        "fill-in-the-blank exercise they type on the keyboard (CAT -> C _ T). " +
+        "The app draws it, checks the answer and gives the praise. Only words " +
+        "from the child's mastered list are accepted.",
+      inputSchema: z.object({
+        words: z
+          .array(z.string().max(24))
+          .min(1)
+          .max(CHAT_TEMPLATE_MAX_PER_TURN)
+          .describe("Words from the mastered list, uppercase."),
+        shape: z.enum(TEMPLATE_SHAPES).default("last").describe(
+          "Which letters to blank out.",
+        ),
+      }),
+      execute: async ({ words, shape }) => {
+        const { made, rejected } = buildTemplates(words, shape, lexicon);
+        // Only what fits in this turn's budget, counting anything already made.
+        const room = Math.max(0, CHAT_TEMPLATE_MAX_PER_TURN - templates.length);
+        const taken = made
+          .filter((t) => !templates.some((prev) => prev.word === t.word))
+          .slice(0, room);
+        templates = [...templates, ...taken];
+
+        return {
+          created: taken.map((t) => ({ word: t.word, shown: templateMask(t) })),
+          refused: rejected,
+          note:
+            rejected.length > 0
+              ? "Refused words are not on the child's mastered list. Do not mention them."
+              : undefined,
+        };
+      },
+    }),
+  };
+
   async function ask(system: string): Promise<string> {
+    templates = [];
     const result = await generateText({
       model: CHAT_MODEL,
       system,
       messages: history,
       temperature: 0.7,
       maxRetries: 1,
+      tools,
+      // One tool call, then the words that go with it. Nothing here needs a
+      // longer loop, and a bounded one cannot spin on a child's turn.
+      stopWhen: stepCountIs(3),
     });
     return result.text.trim();
   }
@@ -143,15 +208,40 @@ export async function POST(req: Request): Promise<NextResponse<ChatOk | ChatDegr
       check = checkReply(text, lexicon, budget);
     }
 
-    if (!text || !check.ok) {
+    if (!check.ok) {
+      // The exercise goes too — it was part of a turn we are discarding.
       return NextResponse.json<ChatOk>({
         ok: true,
         reply: FALLBACK_REPLY_HE,
         novel: [],
+        templates: [],
       });
     }
 
-    return NextResponse.json<ChatOk>({ ok: true, reply: text, novel: check.novel });
+    if (!text) {
+      // A tool call with no words around it. The exercise is real and worth
+      // keeping; give it the one line it needs so it never lands unexplained.
+      return templates.length > 0
+        ? NextResponse.json<ChatOk>({
+            ok: true,
+            reply: TEMPLATE_INTRO_HE,
+            novel: [],
+            templates,
+          })
+        : NextResponse.json<ChatOk>({
+            ok: true,
+            reply: FALLBACK_REPLY_HE,
+            novel: [],
+            templates: [],
+          });
+    }
+
+    return NextResponse.json<ChatOk>({
+      ok: true,
+      reply: text,
+      novel: check.novel,
+      templates,
+    });
   } catch {
     // Upstream failure. No error text is forwarded — it can contain request
     // details, and a child cannot act on it anyway.

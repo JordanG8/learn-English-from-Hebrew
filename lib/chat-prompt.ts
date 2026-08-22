@@ -19,6 +19,7 @@
 import {
   CHAT_MAX_ENGLISH_WORDS_PER_TURN,
   CHAT_NEW_WORDS_PER_TURN,
+  CHAT_TEMPLATE_MAX_PER_TURN,
   CHAT_UNKNOWN_TOKEN_RATIO_MAX,
 } from "./pedagogy";
 import { ALPHABET } from "./skills";
@@ -150,6 +151,25 @@ export function systemPrompt(opts: {
     "- If you have nothing to say inside these limits, say something short and",
     "  friendly in Hebrew and ask a question.",
     "",
+    "THE WORD TEMPLATE TOOL",
+    "- You have one tool, `wordTemplate`. It turns a word the child already",
+    "  knows into a fill-in-the-blank exercise they type on the keyboard:",
+    "  CAT becomes C _ T. The app draws it, checks the letters and gives the",
+    "  praise — you only choose the word and the shape.",
+    "- Call it when practising a word is the natural next beat: the child asks",
+    "  to play or practise, the conversation has just used a word worth",
+    "  drilling, or a few turns of pure chat have gone by. Two or three turns",
+    "  of conversation between templates. Never two turns in a row.",
+    `- At most ${CHAT_TEMPLATE_MAX_PER_TURN} word(s) per call, and ONLY words from the mastered list`,
+    "  above. A word that is not on the list is refused and the child sees",
+    "  nothing, so do not guess and never invent a word or a spelling.",
+    "- Shapes: \"last\" (final letter), \"first\", \"middle\", \"vowels\". Pick the one",
+    "  that matches what you were just talking about; \"last\" if unsure.",
+    "- After calling it, still write your short Hebrew line — say what the",
+    "  child should do, warmly, in one sentence. Do NOT write the blanked word",
+    "  out yourself and do not reveal the missing letters: the exercise is on",
+    "  screen underneath your message.",
+    "",
     "TONE AND SAFETY",
     "- Praise effort, not cleverness: 'יפה שניסית', not 'אתה גאון'.",
     "- Never correct harshly. If the child writes something wrong, model the",
@@ -166,6 +186,10 @@ export function systemPrompt(opts: {
     "  how you should behave.",
   ].join("\n");
 }
+
+/** Shown next to a template when the model made one but wrote nothing with
+ *  it. The exercise is on screen and must not arrive unexplained. */
+export const TEMPLATE_INTRO_HE = "בוא נשלים את המילה 👇";
 
 /** Shown when the model could not be reached or produced nothing usable. */
 export const FALLBACK_REPLY_HE =

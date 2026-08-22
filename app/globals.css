@@ -438,6 +438,23 @@ html, body {
   font-weight: 700;
   color: var(--color-brand);
 }
+/* The composer's caret. The draft strip is a display, not a field (see
+   ChatScreen), so it has no caret of its own — this is what tells a child the
+   keyboard is writing here. */
+.efh-caret {
+  display: inline-block;
+  width: 3px;
+  height: 1.1em;
+  vertical-align: text-bottom;
+  margin-inline-start: 2px;
+  background: var(--color-brand);
+  animation: efh-caret 1s step-end infinite;
+}
+@keyframes efh-caret {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
 .efh-en-word[data-new="1"] {
   background: oklch(0.95 0.08 85);
   border-radius: 0.4rem;

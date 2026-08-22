@@ -39,6 +39,7 @@ lib/
   progress-context.tsx  the single client owner of Progress
   keyboard-adapter.tsx  the ONE seam onto components/keyboard
   chat-prompt.ts        system prompt + lexicon enforcement (pure)
+  word-template.ts      the AI's fill-in-the-blank exercises (pure)
   voice/
     lines.ts            the closed catalogue of every spoken line
     manifest.ts         client: which lines are recorded, and where
@@ -324,6 +325,55 @@ three separate points in `app/api/chat/route.ts` and `lib/chat-prompt.ts`:
 - **Safety rules in the prompt**: child-appropriate topics only, redirect
   anything unsafe, never solicit or repeat personal details, never claim to be
   a person.
+
+### The child writes on the keyboard, not in a text field
+
+`ChatScreen` mounts the same `KeyboardSurface` a lesson does, and there is no
+`<input>` on the screen: the strip above the board is a **display**, and every
+character in it arrived through `onKey`. Two reasons.
+
+- **It is the curriculum.** Finding a letter, and getting from עברית to English
+  with Alt+Shift, is a taught skill here. Chat is where the child spends it on
+  something they wanted to say. Composing starts in Hebrew; an exercise sets
+  `requiredLang="en"`, so the switch demands the real chord.
+- **A field would double every keystroke.** `VirtualKeyboard` already listens
+  to the hardware keyboard, by `event.code` — the only identifier that survives
+  a child switching their OS layout to Hebrew. A focused `<input>` would take
+  the same press a second time, and take it as `event.key`, which is precisely
+  the lookup that breaks in Hebrew.
+
+Touch and hardware both work, unconfigured, as everywhere else in the app.
+
+### The word-template tool
+
+The model has exactly one tool, `wordTemplate`. It turns a word the child has
+already mastered into a fill-in-the-blank exercise they type back:
+
+```
+🐱  חתול      C _ T
+```
+
+The split of responsibility is the whole point. The model chooses **which word
+and which shape** (`last`, `first`, `middle`, `vowels`) — it is the only party
+that knows what the conversation was about. Everything else comes from
+`lib/word-template.ts`: the spelling, the emoji, the Hebrew gloss and the
+blanked positions are read out of the app's own word bank, and a word outside
+the child's mastered lexicon is refused with a reason the model can act on. A
+hallucinated word, a misspelling or a word the child has never met cannot reach
+the screen.
+
+Because the exercise is **data, not a string in the reply**, it can be graded:
+the card renders real slots, each keypress is checked against the real answer,
+and finishing one records an attempt against `word:<WORD>` exactly as a lesson
+would. `CHAT_TEMPLATE_FORGIVEN_MISSES` decides whether that attempt counts as
+correct — one wrong key on a keyboard a child is still learning is a motor
+slip, two is the word — and after `CHAT_TEMPLATE_MISSES_BEFORE_HINT` the answer
+key lights up on the board, so nobody sits stuck in front of a blank.
+
+A turn's exercises are dropped along with a reply that fails output validation:
+`ask()` clears them, so a discarded turn cannot leave its exercise behind. A
+tool call that arrives with no words around it still gets a Hebrew line
+(`TEMPLATE_INTRO_HE`) — an exercise never lands unexplained.
 
 ---
 

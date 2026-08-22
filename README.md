@@ -21,7 +21,10 @@ reward structure the drilling normally lacks.
   dual-layout keyboard. Where `A` is, and how to get from עברית to English with
   Alt+Shift, is a taught skill here.
 - **Mastery is measured, not assumed.** Conversation mode unlocks on evidence
-  from spaced retrieval, not on lessons clicked through.
+  from spaced retrieval, not on lessons clicked through. And it is still
+  practice: the child writes to the AI on the app's own bilingual keyboard, and
+  the AI can hand back a word to fill in — 🐱 חתול `C _ T` — which is graded
+  and fed to the SRS like any lesson. See `docs/architecture.md` §5.
 - **Impossible to misread.** One action per screen, 64px+ targets, Hebrew
   instructions, redundant icon + colour + text.
 

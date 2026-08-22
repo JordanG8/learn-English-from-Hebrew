@@ -356,6 +356,33 @@ export const CHAT_HISTORY_TURNS = 8;
 /** Model served through the Vercel AI Gateway. */
 export const CHAT_MODEL = "anthropic/claude-sonnet-5";
 
+/* ---- Word templates the AI hands out mid-conversation -------------- */
+
+/**
+ * A word template is a known word with some of its letters removed, for the
+ * child to type back: SIT → S _ T. It is RETRIEVAL PRACTICE, which is why the
+ * conversation is allowed to interrupt itself with one — recalling a word
+ * costs more and is worth more than reading it again (docs/research.md §5,
+ * the same argument the SRS is built on).
+ *
+ * [conf C — our numbers] Two constraints keep it a game rather than a test:
+ * at most two blanks, so enough of the word survives to cue the recall, and
+ * at most two templates per turn, so a turn stays a conversation.
+ */
+export const CHAT_TEMPLATE_MAX_BLANKS = 2;
+export const CHAT_TEMPLATE_MAX_PER_TURN = 2;
+
+/**
+ * Wrong letters forgiven before the attempt is graded as a failure. One typo
+ * on a keyboard a child is still learning to find their way around is a
+ * motor slip, not a forgotten word; two is the word.
+ */
+export const CHAT_TEMPLATE_FORGIVEN_MISSES = 1;
+
+/** Wrong letters before the correct key is spotlighted on the keyboard. The
+ *  child never sits stuck in front of a blank they cannot fill. */
+export const CHAT_TEMPLATE_MISSES_BEFORE_HINT = 2;
+
 /* ------------------------------------------------------------------ */
 /* 7. Onboarding                                                        */
 /* ------------------------------------------------------------------ */
