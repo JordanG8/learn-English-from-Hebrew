@@ -32,11 +32,24 @@ than hand-written, so adding a letter or a word adds its line automatically.
 | ההדרכה | 3 | The first-visit walkthrough cards, in Hebrew. |
 | שמות האותיות | 26 | The letter *names* — "A", "B"… |
 | צלילי האותיות | 26 | The letter *sounds* — "ah", "buh"… |
-| מילים | ~54 | Every word the child builds or hears, plus the per-letter example words. |
-| כרטיסי שיעור (רשות) | ~73 | The Hebrew explanation cards inside lessons. These were never spoken before, so recording them is an upgrade, not a requirement. |
+| מילים | ~91 | Every word the child builds or hears, plus the per-letter example words. |
+| משפטים | 50 | The sentences of levels 76–100. **None of these are recorded.** |
+| כרטיסי שיעור (רשות) | ~62 | The Hebrew explanation cards inside lessons. These were never spoken before, so recording them is an upgrade, not a requirement. |
 
 The headline progress bar counts only the non-optional groups: finishing the
 lines the app actually speaks should read as finished.
+
+**The sentence group is deliberately in the required set, and deliberately
+empty.** The sentence phase shipped without waiting for a voice: every
+sentence line has a TTS fallback, so a child on level 76 hears the browser
+read "I SEE A CAT" today, and hears a person read it the day somebody records
+it — no code change, no deploy. Counting the group as required is the honest
+accounting: the app speaks these lines, nobody has recorded them, and the
+progress bar should say so rather than reporting 100% while a synthesiser
+reads sentences to a seven-year-old. Sentences are also where a recording is
+worth the most — prosody is most of what makes a sentence comprehensible, and
+it is the one thing TTS cannot fake at this reading level. If you record
+anything next, record these.
 
 **Hebrew lines have no TTS fallback, deliberately.** A robotic Hebrew voice
 reading to a seven-year-old is worse than the silence the app shipped with,
@@ -161,7 +174,12 @@ Two rules the player enforces, both learned the hard way:
 
 ### Adding a new line
 
-Add the letter or the word to the curriculum. It appears in the studio on the
-next load, unrecorded, using TTS until someone records it. Nothing else to do.
+Add the letter, the word or the sentence to the curriculum. It appears in the
+studio on the next load, unrecorded, using TTS until someone records it.
+Nothing else to do.
 
-Renaming an existing id orphans its recording — the id *is* the filename.
+Renaming an existing id orphans its recording — the id *is* the filename. For
+a sentence the id is derived from the words themselves
+(`"I SEE A CAT"` → `sentence-i-see-a-cat`), so **editing the wording of a
+sentence orphans its recording too**. Adding a sentence is free; rewording one
+that has been recorded is not.

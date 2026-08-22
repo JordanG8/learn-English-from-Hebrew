@@ -7,6 +7,8 @@
  *   letter-shape:A    the child can pick A out of look-alikes (b/d/p/q work)
  *   key:KeyA          the child can find A on a physical keyboard
  *   word:APPLE        the child can build the whole word
+ *   sentence:I SEE A CAT
+ *                     the child can type the whole sentence, spaces included
  *   meta:lang-switch  app-level skills (Alt+Shift, digits row, symbols)
  *
  * Everything else in the app treats SkillId as opaque; parse only here.
@@ -20,6 +22,8 @@ export type SkillKind =
   | "letter-shape"
   | "key"
   | "word"
+  /** ADDED (track redesign): a whole sentence typed word by word. */
+  | "sentence"
   | "meta";
 
 export interface ParsedSkill {
@@ -33,6 +37,7 @@ const KINDS: readonly SkillKind[] = [
   "letter-shape",
   "key",
   "word",
+  "sentence",
   "meta",
 ];
 
@@ -44,6 +49,9 @@ export const letterShapeSkill = (letter: string): SkillId =>
   `letter-shape:${letter.toUpperCase()}`;
 export const keySkill = (code: KeyCode): SkillId => `key:${code}`;
 export const wordSkill = (word: string): SkillId => `word:${word.toUpperCase()}`;
+/** Whitespace is collapsed so "I  SEE" and "I SEE" are never two skills. */
+export const sentenceSkill = (sentence: string): SkillId =>
+  `sentence:${sentence.toUpperCase().trim().replace(/\s+/g, " ")}`;
 export const metaSkill = (name: string): SkillId => `meta:${name}`;
 
 /** Returns null for anything that is not a well-formed skill id. */

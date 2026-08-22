@@ -26,6 +26,7 @@
 
 import { LETTERS } from "@/lib/curriculum/alphabet";
 import { WORDS } from "@/lib/curriculum/words";
+import { SENTENCES } from "@/lib/curriculum/sentences";
 import { LESSONS, TUTORIAL_LESSON } from "@/lib/curriculum/lessons";
 import type { TutorialStep } from "@/lib/types";
 
@@ -34,6 +35,7 @@ export type VoiceGroupId =
   | "letter-name"
   | "letter-sound"
   | "word"
+  | "sentence"
   | "lesson-card";
 
 export interface VoiceLine {
@@ -81,6 +83,21 @@ export const wordLineId = (word: string): string =>
 
 export const narrationLineId = (stepId: string): string =>
   `narration-${stepId}`;
+
+/**
+ * A whole sentence. The id is the sentence itself, lower-cased and
+ * hyphenated — "I SEE A CAT" → "sentence-i-see-a-cat" — so it is readable in
+ * a directory listing and stable as long as the sentence is. Editing a
+ * sentence's wording orphans its recording, exactly as renaming any other id
+ * does; that is the price of ids being filenames, and it is documented here
+ * rather than discovered later.
+ */
+export const sentenceLineId = (sentence: string): string =>
+  `sentence-${sentence
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")}`;
 
 /** Ids are filenames. Anything else is rejected at the API boundary. */
 export const VOICE_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
@@ -174,6 +191,28 @@ function wordLines(): VoiceLine[] {
     }));
 }
 
+/**
+ * SENTENCES. Nobody has recorded one yet, and the sentence phase shipped
+ * without waiting for that: every line here has a TTS fallback, so a child
+ * playing level 76 today hears the browser voice read the sentence, and hears
+ * a human read it the moment somebody records it in /studio — no code change,
+ * no deploy. A recorded sentence is worth a great deal more than a recorded
+ * word (prosody is most of what makes a sentence comprehensible), which is
+ * why these are in the required set rather than the optional one: the studio
+ * should show them as work outstanding, because they are.
+ */
+function sentenceLines(): VoiceLine[] {
+  return SENTENCES.map((x, i) => ({
+    id: sentenceLineId(x.text),
+    group: "sentence" as const,
+    lang: "en" as const,
+    text: x.text.toLowerCase(),
+    directionHe: `המשפט «${x.he}» — קראו אותו כמו שמדברים, לא מילה־מילה.`,
+    fallback: { text: x.text.toLowerCase(), rate: 0.65 },
+    order: i,
+  }));
+}
+
 export const VOICE_GROUPS: readonly VoiceGroup[] = [
   {
     id: "narration",
@@ -198,6 +237,13 @@ export const VOICE_GROUPS: readonly VoiceGroup[] = [
     titleHe: "מילים",
     blurbHe: "כל מילה שהילד בונה או שומע.",
     lines: wordLines(),
+  },
+  {
+    id: "sentence",
+    titleHe: "משפטים",
+    blurbHe:
+      "המשפטים של השלבים האחרונים. אלה עוד לא מוקלטים - עד שיוקלטו הילד שומע את הקול של הדפדפן.",
+    lines: sentenceLines(),
   },
   {
     id: "lesson-card",

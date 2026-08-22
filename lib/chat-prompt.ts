@@ -23,6 +23,7 @@ import {
 } from "./pedagogy";
 import { ALPHABET } from "./skills";
 import { WORDS } from "./curriculum/words";
+import { SENTENCE_VOCAB } from "./curriculum/sentences";
 
 /**
  * Glue words the model may always use. Without these it cannot write a
@@ -36,7 +37,24 @@ export const FUNCTION_WORDS: readonly string[] = [
   "THIS", "THAT", "NOT", "VERY", "NICE", "WOW", "TOO", "ME", "WE",
 ];
 
-const APP_WORDS = new Set(WORDS.map((w) => w.word));
+/**
+ * Every English word the app itself teaches: the picture bank, plus every
+ * word the sentence phase asks a child to type.
+ *
+ * The sentence vocabulary is here for a specific reason. Levels 76–100 hand a
+ * child "I HAVE A DOG", one keystroke at a time — and then conversation mode
+ * used to refuse to say HAVE back to them, because the narrowing step only
+ * knew about words that carry an emoji. A word the track made them type is a
+ * word they know; the gate is "did the app teach this", not "can it be drawn".
+ *
+ * This stays a CLOSED set. It is the wall between a tampered lexicon in a
+ * request body and the system prompt, and it only ever grows by adding
+ * content to the curriculum.
+ */
+const APP_WORDS = new Set<string>([
+  ...WORDS.map((w) => w.word),
+  ...SENTENCE_VOCAB,
+]);
 
 /** Only words the app itself teaches may enter the prompt. */
 export function sanitizeLexicon(raw: readonly string[]): string[] {

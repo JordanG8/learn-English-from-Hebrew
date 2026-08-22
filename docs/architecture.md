@@ -50,6 +50,7 @@ lib/
     contract.ts         content types, declared apart from the content
     alphabet.ts         all 26 letters
     words.ts            the word bank
+    sentences.ts        the sentence bank + the glue words it needs
     lessons.ts          track generation + the SRS↔content bridge
     index.ts            public surface
 
@@ -132,6 +133,136 @@ writer.
 uses a fresh profile with `ready === false`. Screens render a stable skeleton
 until `ready` is true. Skipping this both breaks hydration and shows a
 returning child "0 stars" for a frame.
+
+---
+
+## 2b. The track — where the hundred levels go
+
+The track is **generated**, not listed, and it is generated to fit three
+declared phases. The numbers are in `lib/pedagogy.ts` §9; `buildTrack()` in
+`lib/curriculum/lessons.ts` is what builds each phase to land on them.
+
+| levels | phase | what happens |
+|---|---|---|
+| 1–50 | **the alphabet** | every one of the 26 letters is introduced, spent on a real word inside its own lesson, drilled and reviewed. Level 50 is the A-to-Z milestone. |
+| 51–75 | **words** | no new letters. Words per level climbs 2 → 5; at level 61 the keyboard stops pointing at the next key. |
+| 76–100 | **sentences** | words side by side — "I SEE A CAT" — typed with the space bar between them. At level 89 the spotlight goes off here too. |
+
+Then conversation mode, which sits on the road from the start with a lock on
+it and is gated on evidence, not on levels (§3).
+
+### Why the alphabet had to finish by 50
+
+The previous track alternated a letter lesson with a separate word lesson that
+spent it. That read well and cost two levels per letter: **the last letter, Q,
+was not introduced until level 60**, and the thirty-odd levels after it were
+leftover words with nothing shaping them. A child who never got past level 50 —
+most of them — never met six letters, and a child who did get there had still
+never seen two English words next to each other.
+
+The fix was not to cut anything. **The payoff word moved inside the letter
+lesson**: same content, same principle (never in a vacuum — a letter is spent
+the moment it is learned), one level instead of two, and the lesson now ends on
+a real word the child just built rather than on a promise. That bought the
+room for the two phases that follow.
+
+Three letters — S, A and T — reach their lesson with no word to spend, because
+one, two and three letters cannot spell anything in the bank. That is
+arithmetic, not an oversight; the first word arrives at letter I, which is what
+the s-a-t-p-i-n teaching order is *for*. `spendWordFor()` is what finds a
+letter's word: the payoff word when the letter unlocks one, otherwise the
+shortest already-buildable word that contains it.
+
+### Why reviews are fitted, not counted
+
+`insertReviews()` computes how many mixed reviews fit the alphabet phase's
+level budget and spreads them evenly, rather than inserting one every N
+lessons. A fixed cadence makes the *length of the phase* a consequence of the
+content; fitting makes it a promise. Add a letter or a drill tomorrow and the
+phase still ends on level 50 with one fewer review, instead of quietly pushing
+the alphabet past the level it is supposed to finish on. A review is never the
+first level after the tutorial (nothing to review yet) and never the last
+level of the phase (that is A-to-Z).
+
+`MIXED_REVIEW_EVERY_N_LESSONS` survives as the statement of intent, and the
+fitted cadence lands near it. If it ever drifts far, the phase budget is what
+needs re-examining.
+
+### Why levels 51+ have no review levels
+
+Because "more words to type" is the promise the road makes there, and a review
+screen is not that. But the chat gate is evidence-based — every letter's name
+and sound mastered, across distinct days, with a delayed retention check — and
+evidence stops accumulating for a skill nothing asks about. A phase with no
+letter lessons and no reviews would quietly make conversation mode
+unreachable.
+
+So every word and sentence lesson carries `warmup: 2`: when the lesson opens,
+`LessonPlayer` asks the SRS what is closest to slipping and prepends that many
+questions. Two rules make it a warm-up rather than a longer level:
+
+- **Alphabet skills only.** `buildWarmupSteps()` filters out word and sentence
+  skills — making a child type an extra word before the words they came for is
+  not a warm-up.
+- **No fallback.** An empty list is a valid answer. With nothing due, the
+  lesson starts on its own first step. This is the one place that differs from
+  `buildReviewLesson()`, which always produces something.
+
+### What a sentence is made of
+
+`lib/curriculum/sentences.ts` holds 50 sentences. Every word in every one of
+them is already known: it is in the word bank, or it is in `SENTENCE_GLUE` —
+the words like "A", "IS", "MY", "WANT" that cannot be drawn and so can never
+enter `words.ts`, whose entrance requirement is an emoji that carries the
+meaning. Glue words are learned the way function words actually are learned:
+in a sentence, from position and repetition, never as a flashcard.
+`unglossedSentenceWords()` is the check that no sentence smuggled in
+vocabulary; it should always return `[]`.
+
+`tier` is derived from length (two words / three / four-or-more), never
+hand-assigned, and the phase walks up the tiers. Sentences per level comes
+*down* as length goes up, so a level stays roughly the same size of job.
+
+The Hebrew appears twice on a sentence screen and the two do different jobs.
+The whole sentence in natural Hebrew is the **meaning** — the big line, what
+the child is being asked to say. The word-under-word glosses are the
+**machinery**, small and secondary. A child reading "אני רואה חתול" over
+"I SEE A CAT" can see for themselves that English spends a word on "A" where
+Hebrew spends none.
+
+The words inside a sentence a child completes join `knownWords`, which is the
+chat lexicon — so the sentence phase is also what stocks conversation mode,
+sitting immediately before it. `sanitizeLexicon()` in `lib/chat-prompt.ts`
+therefore narrows against the word bank *plus* `SENTENCE_VOCAB`; it is still a
+closed set, and it still only grows by adding curriculum.
+
+### Checking the promise
+
+`TRACK_SHAPE` is computed from the built track, not asserted in a comment:
+
+```ts
+{ total: 100, alphabetEnd: 50, wordEnd: 75, sentenceEnd: 100,
+  lastLetterLevel: 49, wordsTyped: 84, sentencesTyped: 50 }
+```
+
+`lastLetterLevel` is the load-bearing one. If a content change pushes it past
+`alphabetEnd`, the promise in the phase's name is broken and this is what says
+so.
+
+### What existing players see
+
+Lesson ids are localStorage keys, and this reorganisation kept every id it
+could: `letter-X`, `review-N`, `kb-lang`, `kb-digits`, `kb-symbols` and
+`abc-song` are unchanged. The standalone `word-SIT`-style lessons are gone
+(folded into their letter lesson) and their completions are now inert; the new
+`words-N`, `sentence-N` and `drill-N` ids are new.
+
+A returning player's unlock chain mostly survives, because `requires` is
+threaded through the lessons they actually completed. Where a newly-inserted
+drill sits behind them, the road will show it as the next level: they play one
+lesson and the chain re-opens. Stars earned against ids that no longer exist
+are still counted — `totalStars` sums the map — which is the generous
+direction to be wrong in.
 
 ---
 
@@ -372,15 +503,43 @@ the spelling, so the word automatically becomes available at the point in
 attach it to that letter's lesson. Every word needs an emoji — the emoji *is*
 the meaning for a child who cannot read the English yet.
 
+### Adding a sentence
+
+Add one line to `lib/curriculum/sentences.ts`. `tier`, `words` and
+`requiresWords` are all derived from the text, so the sentence lands in the
+right part of the sentence phase by itself and appears in `/studio` as an
+unrecorded line the same day.
+
+The one rule: **every word must already be known** — in the word bank, or in
+`SENTENCE_GLUE`. If it is a word that can be drawn, it belongs in `words.ts`
+with an emoji; if it cannot (`IS`, `MY`, `WANT`), add it to `SENTENCE_GLUE`
+with a Hebrew hint for *this word in this position*, not a dictionary
+translation. `unglossedSentenceWords()` returns anything you missed.
+
+The sentence phase cycles each tier's bank, so adding sentences reduces
+repetition rather than lengthening the track — the phase is 25 levels either
+way.
+
 ### Adding a lesson
 
-Lessons are generated by `buildTrack()` in `lib/curriculum/lessons.ts`. To add
-a one-off lesson, `push()` a `Lesson` in the right place; `order` and
-`requires` are threaded through automatically, giving a linear track.
+Lessons are generated by `buildTrack()` in `lib/curriculum/lessons.ts`, which
+concatenates three phase builders (`alphabetPhase`, `wordPhase`,
+`sentencePhase`) and then threads `order` and the linear `requires` chain
+through in one pass — so no builder needs to know where in the track it ended
+up. To add a one-off lesson, `push()` a `Lesson` into the right phase.
 
 A lesson needs: a stable `id` (it is a localStorage key — never reuse or
 rename one), `kind`, `titleHe`, the `skills` it touches (this drives SRS
-scheduling), and its `steps`.
+scheduling), and its `steps`. Optionally `warmup: n` to open with `n`
+SRS-chosen alphabet questions.
+
+**Adding to the alphabet phase costs a review, not a level.** `insertReviews`
+fills whatever room is left in the 50-level budget, so one more lesson means
+one fewer review and the phase still ends on level 50. Adding to the word or
+sentence phase *does* lengthen the track, because those phases are a fixed
+count of generated levels — change `WORD_PHASE_LEVELS` /
+`SENTENCE_PHASE_LEVELS` (and `TRACK_TOTAL_LEVELS`) rather than pushing an
+extra lesson in.
 
 ### Adding a spoken line
 
@@ -400,6 +559,13 @@ stored filename, so renaming an id orphans its recording.
    Return `null`, never throw, for a skill you have no content for: `Progress`
    outlives content changes.
 5. Add the branch to the renderer switch in `LessonPlayer`.
+6. If the step owns its own celebration and calls `onAdvance` itself (as
+   `build-word` and `build-sentence` do), say so in the two places
+   `LessonPlayer` checks for it: the correct-answer path must not schedule its
+   own advance, and the out-of-attempts path must not move on past a step the
+   child is still filling in.
+
+`build-sentence` is the worked example of all six — it was added this way.
 
 ### How a mixed review actually works
 
@@ -447,6 +613,25 @@ Honest list of what is not built, or is built differently from
    with crude English syllables ("buh", "ss") because TTS cannot read IPA, and
    quality varies by device. Everything degrades to silence with the Hebrew
    text instruction intact. Recorded audio would be better.
+10. **No sentence is recorded.** All 50 sentences of levels 76–100 play
+    through the browser voice today. They are in the *required* voice group
+    rather than the optional one precisely so the studio reports them as
+    outstanding — see `docs/voice.md`. This is the largest gap the sentence
+    phase shipped with, and it is a recording session rather than a code
+    change: `saySentence()` already prefers a human recording the moment one
+    exists.
+11. **Sentence Hebrew is a hint, not a translation model.** The per-word
+    glosses under a sentence come from a flat word→Hebrew map, so a word
+    carries the same gloss in every sentence it appears in. That is right for
+    "CAT" and rough for "IS". A child gets the natural Hebrew of the whole
+    sentence as the primary channel, which is what actually carries the
+    meaning; the word-by-word row is machinery and is deliberately the small
+    text.
+12. **Nothing teaches sentence *reading*.** The sentence phase teaches
+    production — typing a sentence someone else composed. Conversation mode
+    asks for comprehension of sentences the AI composes. That gap is smaller
+    than it was (it used to be the whole distance from single words) but it is
+    still a gap.
 8. **`components/keyboard/` styling and phone degradation are not ours.** The
    keyboard's focus-tile mode on narrow screens is documented in its README and
    trusted; it has not been exercised on a real phone here.
