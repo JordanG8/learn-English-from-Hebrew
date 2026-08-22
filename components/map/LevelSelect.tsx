@@ -35,6 +35,7 @@ import { tourAttr } from "@/lib/tour";
 import { tintStyle } from "@/lib/palette";
 import { playSfx, primeAudio } from "@/lib/audio";
 import { markStand, seenStand } from "@/lib/advancement";
+import { useStudioUnlock } from "@/lib/studio-unlock";
 import { Walkthrough } from "@/components/onboarding/Walkthrough";
 import { StarRow } from "@/components/ui/kit";
 import { ADVANCE_MS } from "./timing";
@@ -69,6 +70,9 @@ export function LevelSelect() {
   const [levelUpFrom, setLevelUpFrom] = useState<number | null>(null);
 
   const gate = useMemo(() => evaluateChatGate(progress), [progress]);
+  /* Tester mode: a device with the studio passcode saved may open any level.
+     See lib/studio-unlock.ts — it lifts locks and nothing else. */
+  const unlockAll = useStudioUnlock();
   const stars = totalStars(progress);
 
   /** The track, in order, with conversation mode as the last stop on the road. */
@@ -99,7 +103,7 @@ export function LevelSelect() {
     const list: LevelNode[] = track.map((l, i) => ({
       id: l.id,
       label: String(i + 1),
-      unlocked: isLessonUnlocked(progress, l),
+      unlocked: unlockAll || isLessonUnlocked(progress, l),
       done: progress.lessonsCompleted.includes(l.id),
       isNext: i === nextIndex,
       isChat: false,
@@ -107,13 +111,13 @@ export function LevelSelect() {
     list.push({
       id: "chat",
       label: "",
-      unlocked: gate.unlocked,
+      unlocked: unlockAll || gate.unlocked,
       done: false,
       isNext: false,
       isChat: true,
     });
     return list;
-  }, [track, progress, nextIndex, gate.unlocked]);
+  }, [track, progress, nextIndex, gate.unlocked, unlockAll]);
 
   const activeIndex = selected ?? nextIndex;
   const activeNode = nodes[activeIndex];
@@ -286,6 +290,7 @@ export function LevelSelect() {
             nextIndex={nextIndex}
             onPick={(i) => setSelected(i)}
             activeIndex={activeIndex}
+            unlockAll={unlockAll}
           />
         )}
 
@@ -321,6 +326,15 @@ export function LevelSelect() {
             >
               <span aria-hidden>💡</span>
             </button>
+            {unlockAll ? (
+              <div
+                className="grid h-14 place-items-center rounded-2xl border-[3px] border-white/70 bg-card/90 px-3 text-2xl shadow"
+                aria-label="מצב בדיקה: כל השלבים פתוחים"
+                title="מצב בדיקה: כל השלבים פתוחים"
+              >
+                <span aria-hidden>🔓</span>
+              </div>
+            ) : null}
             <div
               {...tourAttr("stars")}
               className="flex h-14 items-center gap-1 rounded-2xl border-[3px] border-white/70 bg-card/90 px-3 shadow"
@@ -408,23 +422,27 @@ function FlatTrack({
   nextIndex,
   activeIndex,
   onPick,
+  unlockAll,
 }: {
   track: { id: string; titleHe: string }[];
   progress: { lessonsCompleted: string[]; stars: Record<string, number> };
   nextIndex: number;
   activeIndex: number;
   onPick: (i: number) => void;
+  unlockAll: boolean;
 }) {
-  // A window around "where am I", the same shape the road shows.
-  const from = Math.max(0, nextIndex - 3);
-  const to = Math.min(track.length, nextIndex + 7);
+  // A window around "where am I", the same shape the road shows. In tester
+  // mode the window is the point of the screen — show the whole track, so a
+  // level twenty stops ahead is one scroll away rather than unreachable.
+  const from = unlockAll ? 0 : Math.max(0, nextIndex - 3);
+  const to = unlockAll ? track.length : Math.min(track.length, nextIndex + 7);
   return (
     <div className="absolute inset-0 overflow-y-auto px-4 pb-40 pt-24">
       <ol className="mx-auto flex max-w-md flex-col gap-2">
         {track.slice(from, to).map((l, k) => {
           const i = from + k;
           const done = progress.lessonsCompleted.includes(l.id);
-          const unlocked = done || i <= nextIndex;
+          const unlocked = unlockAll || done || i <= nextIndex;
           return (
             <li key={l.id}>
               <button
