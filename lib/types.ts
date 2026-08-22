@@ -44,6 +44,8 @@ export type LessonKind =
   | "tutorial"   // how the app itself works
   | "keyboard"   // Simon-says key finding, builds to a whole word
   | "letter"     // one letter: name, sound, shape, then its key
+  | "word"       // ADDED (track redesign): a batch of whole words to type
+  | "sentence"   // ADDED (track redesign): a first sentence, typed word by word
   | "mixed"      // interleaved review across earlier skills
   | "chat";      // AI conversation mode
 
@@ -65,12 +67,24 @@ export interface Lesson {
   /** Lesson ids that must be completed before this one unlocks. */
   requires: string[];
   steps: Step[];
+  /**
+   * ADDED (track redesign): prepend this many SRS-chosen review steps when the
+   * lesson is opened. Optional — a lesson without it plays exactly its `steps`.
+   *
+   * This is how the word and sentence phases keep the alphabet alive without
+   * spending a whole level on a review screen: the letters the scheduler says
+   * are slipping are asked first, and then the level gets on with its words.
+   * A warm-up is skipped silently when nothing is due, so it never pads a
+   * lesson with busywork.
+   */
+  warmup?: number;
 }
 
 export type Step =
   | TutorialStep
   | PressKeyStep
   | BuildWordStep
+  | BuildSentenceStep
   | LetterSoundStep
   | LetterShapeStep
   | ChatStep;
@@ -108,6 +122,37 @@ export interface BuildWordStep extends StepCommon {
   word: string;
   he: string;          // Hebrew gloss, e.g. "תפוח"
   emoji: string;       // celebration payload
+  /**
+   * ADDED (track redesign): spotlight the next key on the keyboard.
+   * Optional and defaults to TRUE, which is what every word lesson did before
+   * the field existed. Turning it off is the scaffold coming down — the child
+   * still sees the letters printed on the caps, but nothing points at one, so
+   * the step becomes recall of where the key lives rather than recognition.
+   */
+  hint?: boolean;
+}
+
+/**
+ * ADDED (track redesign): a whole SENTENCE, typed word by word — the last
+ * quarter of the track.
+ *
+ * It is deliberately the same motor task as `build-word` with one thing added:
+ * the space bar, and therefore the idea that English words are separated
+ * objects. The child types letters left to right; at a word boundary the
+ * space bar is the target. There is no free typing and no backspace-hunting —
+ * a wrong key is simply not accepted, exactly as in a word build.
+ */
+export interface BuildSentenceStep extends StepCommon {
+  type: "build-sentence";
+  /** Uppercase, single spaces between words, e.g. "I SEE A CAT". */
+  sentence: string;
+  /** Hebrew gloss of the whole sentence, e.g. "אני רואה חתול". */
+  he: string;
+  emoji: string;
+  /** Per-word Hebrew glosses, in order — the sentence taken apart. */
+  wordsHe: string[];
+  /** Spotlight the next key. Off = recall. */
+  hint: boolean;
 }
 
 export interface LetterSoundStep extends StepCommon {

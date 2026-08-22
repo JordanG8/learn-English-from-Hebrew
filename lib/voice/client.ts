@@ -19,8 +19,10 @@ import {
   type SynthInfo,
   type VoiceClip,
 } from "./manifest";
+// One source of truth for the key: a device holding a passcode is also the
+// device that plays the track unlocked (see lib/studio-unlock.ts).
+import { PASSCODE_KEY } from "@/lib/studio-unlock";
 
-const PASSCODE_KEY = "efh:voice-passcode";
 const PASSCODE_HEADER = "x-voice-passcode";
 
 export function storedPasscode(): string {

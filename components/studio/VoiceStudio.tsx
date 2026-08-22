@@ -400,6 +400,14 @@ export function VoiceStudio() {
               ? "מוגדרת בשרת כ‑VOICE_STUDIO_PASSCODE. נשמרת במכשיר הזה בלבד."
               : "לא נדרשת סיסמה בסביבה הזאת."}
           </p>
+          {/* Saving the passcode also opens the whole track on this device —
+              lib/studio-unlock.ts. Said here because it changes what the app
+              looks like outside the studio, and the way to turn it off is the
+              button below. */}
+          <p className="text-sm text-ink-soft">
+            כל עוד הסיסמה שמורה כאן, כל השלבים באפליקציה פתוחים במכשיר הזה
+            (לבדיקות). מחיקת הסיסמה מחזירה את הנעילות.
+          </p>
           <div className="flex gap-2">
             <input
               id="passcode"
@@ -421,6 +429,17 @@ export function VoiceStudio() {
               שמירה
             </button>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              storePasscode("");
+              setPasscode("");
+              setNote("הסיסמה נמחקה מהמכשיר.");
+            }}
+            className="min-h-12 self-start rounded-xl border-2 border-brand-soft px-4 text-base font-bold"
+          >
+            שכח סיסמה
+          </button>
         </div>
       ) : null}
 

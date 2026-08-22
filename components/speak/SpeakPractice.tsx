@@ -43,7 +43,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useProgress } from "@/lib/progress-context";
-import { practiceWords } from "@/lib/curriculum/words";
+import { WORDS_BY_DIFFICULTY } from "@/lib/curriculum/words";
 import type { WordData } from "@/lib/curriculum/contract";
 import { playSfx, primeAudio, sayWord, stopSpeech } from "@/lib/audio";
 import { encouragement, praise } from "@/lib/reward";
@@ -76,11 +76,15 @@ interface Answer {
  * microphone. A child who has built nothing yet gets the tier-1 words, so the
  * screen is never empty and never a wall of unknown English.
  */
-function wordsFor(known: readonly string[]): WordData[] {
-  const ordered = practiceWords();
+function wordsFor(known: readonly string[]): readonly WordData[] {
+  // WORDS_BY_DIFFICULTY is the running order of the word phase itself, so
+  // practice walks the same ramp the lessons do rather than a second one of
+  // its own invention.
   const set = new Set(known.map((w) => w.toUpperCase()));
-  const mine = ordered.filter((w) => set.has(w.word.toUpperCase()));
-  return mine.length >= 3 ? mine : ordered.filter((w) => w.tier === 1);
+  const mine = WORDS_BY_DIFFICULTY.filter((w) => set.has(w.word.toUpperCase()));
+  return mine.length >= 3
+    ? mine
+    : WORDS_BY_DIFFICULTY.filter((w) => w.tier === 1);
 }
 
 /* ------------------------------------------------------------------ */

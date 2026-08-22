@@ -35,6 +35,7 @@ import { tourAttr } from "@/lib/tour";
 import { tintStyle } from "@/lib/palette";
 import { playSfx, primeAudio } from "@/lib/audio";
 import { markStand, seenStand } from "@/lib/advancement";
+import { useStudioUnlock } from "@/lib/studio-unlock";
 import { Walkthrough } from "@/components/onboarding/Walkthrough";
 import { StarRow } from "@/components/ui/kit";
 import { ADVANCE_MS } from "./timing";
@@ -58,6 +59,11 @@ export function LevelSelect() {
   // it lands, or the canvas stays empty forever.
   const [worldReady, setWorldReady] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
+  // A ref mirrors selection so several taps in one React frame still advance
+  // from the latest level. Reading `selected` inside a click handler used to
+  // make rapid previous/next taps all calculate from the same stale render.
+  const selectedRef = useRef<number | null>(null);
+  selectedRef.current = selected;
   const [replay, setReplay] = useState(false);
   /*
    * The gate. "running" from the moment the road knows it owes a level-up
@@ -69,6 +75,7 @@ export function LevelSelect() {
   const [levelUpFrom, setLevelUpFrom] = useState<number | null>(null);
 
   const gate = useMemo(() => evaluateChatGate(progress), [progress]);
+  const unlockAll = useStudioUnlock();
   const stars = totalStars(progress);
 
   /** The track, in order, with conversation mode as the last stop on the road. */
@@ -99,7 +106,7 @@ export function LevelSelect() {
     const list: LevelNode[] = track.map((l, i) => ({
       id: l.id,
       label: String(i + 1),
-      unlocked: isLessonUnlocked(progress, l),
+      unlocked: unlockAll || isLessonUnlocked(progress, l),
       done: progress.lessonsCompleted.includes(l.id),
       isNext: i === nextIndex,
       isChat: false,
@@ -107,17 +114,46 @@ export function LevelSelect() {
     list.push({
       id: "chat",
       label: "",
-      unlocked: gate.unlocked,
+      unlocked: unlockAll || gate.unlocked,
       done: false,
       isNext: false,
       isChat: true,
     });
     return list;
-  }, [track, progress, nextIndex, gate.unlocked]);
+  }, [track, progress, nextIndex, gate.unlocked, unlockAll]);
 
   const activeIndex = selected ?? nextIndex;
   const activeNode = nodes[activeIndex];
   const activeLesson = activeNode?.isChat ? null : track[activeIndex];
+
+  const chooseLevel = useCallback((index: number) => {
+    const safe = Math.max(0, Math.min(nodes.length - 1, index));
+    if (!nodes[safe]?.unlocked) return;
+    selectedRef.current = safe;
+    setSelected(safe);
+    worldRef.current?.focus(safe);
+  }, [nodes]);
+
+  /**
+   * A dependable second way to travel. The 3D pads remain the direct, playful
+   * control; these two quiet buttons are the fast path for a child revisiting
+   * completed lessons, for keyboard users, and for a pointer that is moving
+   * faster than the camera transition.
+   */
+  const stepLevel = useCallback((direction: -1 | 1) => {
+    const start = selectedRef.current ?? nextIndex;
+    for (let i = start + direction; i >= 0 && i < nodes.length; i += direction) {
+      if (nodes[i]?.unlocked) {
+        primeAudio();
+        playSfx("tap");
+        chooseLevel(i);
+        return;
+      }
+    }
+  }, [chooseLevel, nextIndex, nodes]);
+
+  const canStepBack = nodes.slice(0, activeIndex).some((node) => node.unlocked);
+  const canStepForward = nodes.slice(activeIndex + 1).some((node) => node.unlocked);
 
   /* --- is a level-up owed? -------------------------------------------- */
   /*
@@ -157,8 +193,7 @@ export function LevelSelect() {
             // would move the spotlight out from under the landing.
             if (levelUpRef.current !== "idle") return;
             playSfx("tap");
-            setSelected(i);
-            worldRef.current?.focus(i);
+            chooseLevel(i);
           },
           onAdvance: (phase) => {
             if (phase === "launch") {
@@ -194,7 +229,7 @@ export function LevelSelect() {
       worldRef.current = null;
       setWorldReady(false);
     };
-  }, [ready, flat]);
+  }, [ready, flat, chooseLevel]);
 
   /* --- feed it the track ---------------------------------------------- */
   useEffect(() => {
@@ -282,9 +317,9 @@ export function LevelSelect() {
         ) : (
           <FlatTrack
             track={track}
+            nodes={nodes}
             progress={progress}
-            nextIndex={nextIndex}
-            onPick={(i) => setSelected(i)}
+            onPick={chooseLevel}
             activeIndex={activeIndex}
           />
         )}
@@ -332,6 +367,15 @@ export function LevelSelect() {
             >
               <span aria-hidden>💡</span>
             </button>
+            {unlockAll ? (
+              <div
+                className="grid h-14 place-items-center rounded-2xl border-[3px] border-white/70 bg-card/90 px-3 text-2xl shadow"
+                aria-label="מצב בדיקה: כל השלבים פתוחים"
+                title="מצב בדיקה: כל השלבים פתוחים"
+              >
+                <span aria-hidden>🔓</span>
+              </div>
+            ) : null}
             <div
               {...tourAttr("stars")}
               className="flex h-14 items-center gap-1 rounded-2xl border-[3px] border-white/70 bg-card/90 px-3 shadow"
@@ -366,6 +410,42 @@ export function LevelSelect() {
 
         {/* --- the one action, at thumb height ----------------------- */}
         <div className="relative flex flex-col items-center gap-2 p-4 pb-6">
+          <div
+            role="group"
+            aria-label="מעבר מהיר בין שלבים"
+            className={`flex items-center gap-2 transition-opacity duration-300 ${
+              held ? "pointer-events-none opacity-0" : "opacity-100"
+            }`}
+          >
+            <button
+              type="button"
+              data-level-step="previous"
+              disabled={!canStepBack || held}
+              onClick={() => stepLevel(-1)}
+              aria-label="לשלב הקודם"
+              className="grid h-12 w-12 place-items-center rounded-2xl border-[3px] border-white/80 bg-card/90 text-xl font-black shadow disabled:opacity-35"
+            >
+              <span aria-hidden>↓</span>
+            </button>
+            <div
+              data-active-level={activeIndex}
+              className="rounded-full border-[3px] border-white/80 bg-card/90 px-4 py-2 text-sm font-black shadow"
+              aria-live="polite"
+            >
+              שלב {activeIndex + 1} מתוך {nodes.length}
+            </div>
+            <button
+              type="button"
+              data-level-step="next"
+              disabled={!canStepForward || held}
+              onClick={() => stepLevel(1)}
+              aria-label="לשלב הבא"
+              className="grid h-12 w-12 place-items-center rounded-2xl border-[3px] border-white/80 bg-card/90 text-xl font-black shadow disabled:opacity-35"
+            >
+              <span aria-hidden>↑</span>
+            </button>
+          </div>
+
           <div
             className={`efh-tint flex items-center gap-2 rounded-full px-4 py-1.5 shadow transition-opacity duration-300 ${
               held ? "opacity-0" : "opacity-100"
@@ -415,44 +495,43 @@ export function LevelSelect() {
 
 function FlatTrack({
   track,
+  nodes,
   progress,
-  nextIndex,
   activeIndex,
   onPick,
 }: {
   track: { id: string; titleHe: string }[];
+  nodes: LevelNode[];
   progress: { lessonsCompleted: string[]; stars: Record<string, number> };
-  nextIndex: number;
   activeIndex: number;
   onPick: (i: number) => void;
 }) {
-  // A window around "where am I", the same shape the road shows.
-  const from = Math.max(0, nextIndex - 3);
-  const to = Math.min(track.length, nextIndex + 7);
   return (
     <div className="absolute inset-0 overflow-y-auto px-4 pb-40 pt-24">
       <ol className="mx-auto flex max-w-md flex-col gap-2">
-        {track.slice(from, to).map((l, k) => {
-          const i = from + k;
-          const done = progress.lessonsCompleted.includes(l.id);
-          const unlocked = done || i <= nextIndex;
+        {nodes.map((node, i) => {
+          const lesson = node.isChat ? null : track[i];
+          const title = node.isChat ? "לדבר באנגלית" : (lesson?.titleHe ?? "");
           return (
-            <li key={l.id}>
+            <li key={node.id}>
               <button
                 type="button"
-                disabled={!unlocked}
+                data-level-index={i}
+                disabled={!node.unlocked}
                 onClick={() => onPick(i)}
                 aria-current={i === activeIndex ? "step" : undefined}
-                style={unlocked ? tintStyle(l.id) : undefined}
+                style={node.unlocked && lesson ? tintStyle(lesson.id) : undefined}
                 className={`efh-tint flex min-h-16 w-full items-center gap-3 rounded-[var(--radius-kid)] border-4 px-4 py-3 text-start disabled:opacity-45 disabled:grayscale ${
-                  i === nextIndex ? "border-go" : done ? "border-go-soft" : "border-transparent"
+                  node.isNext ? "border-go" : node.done ? "border-go-soft" : "border-transparent"
                 }`}
               >
                 <span aria-hidden className="efh-badge">
-                  {unlocked ? i + 1 : "🔒"}
+                  {node.unlocked ? (node.isChat ? "💬" : i + 1) : "🔒"}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-lg font-bold">{l.titleHe}</span>
-                {done ? <StarRow earned={progress.stars[l.id] ?? 0} size={18} /> : null}
+                <span className="min-w-0 flex-1 truncate text-lg font-bold">{title}</span>
+                {node.done && lesson ? (
+                  <StarRow earned={progress.stars[lesson.id] ?? 0} size={18} />
+                ) : null}
               </button>
             </li>
           );

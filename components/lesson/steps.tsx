@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  BuildSentenceStep,
   BuildWordStep,
   LetterShapeStep,
   LetterSoundStep,
@@ -32,6 +33,7 @@ import {
   sayCard,
   sayLetterName,
   sayLetterSound,
+  saySentence,
   sayWord,
   stopSpeech,
 } from "@/lib/audio";
@@ -363,6 +365,15 @@ export function BuildWordView({
   const target = letters[filled];
   const targetCode = target ? `Key${target}` : null;
   const targetData = target ? getLetter(target) : undefined;
+  /*
+   * THE SCAFFOLD DIAL. `hint` is absent on every word step written before the
+   * word phase existed, and absent means on — which is what those steps always
+   * did. Off, the caps still carry their legends, but nothing points at one,
+   * so finding the key is recall. The player's rescue hint (forceHint, after
+   * two misses in a row) always wins: a child who is stuck gets the spotlight
+   * back whatever the content asked for.
+   */
+  const hinted = (step.hint ?? true) || forceHint || missHere > 0;
 
   const handleKey = useCallback(
     (code: string, _char: string | null, activeLang: Lang) => {
@@ -445,6 +456,12 @@ export function BuildWordView({
             המקש המסומן — זה הוא
           </p>
         ) : null}
+        {!hinted && missHere === 0 ? (
+          <p className="text-center text-lg font-bold text-ink-soft">
+            <span aria-hidden>💪 </span>
+            בלי סימון — תמצאו לבד
+          </p>
+        ) : null}
         <button
           type="button"
           onClick={() => sayLetterName(target ?? step.word)}
@@ -459,13 +476,253 @@ export function BuildWordView({
         <KeyboardSurface
           lang="en"
           requiredLang="en"
-          // The target key is always spotlighted in a word build: this step
-          // teaches "where does this letter live", it does not test recall.
-          // It is also what makes the keyboard usable on a phone, where the
-          // board degrades to focus tiles built from `highlight`.
-          highlight={targetCode ? [targetCode] : []}
+          // Spotlighted while the step is still teaching "where does this
+          // letter live"; dark once the word phase turns the scaffold off,
+          // and lit again the moment the child needs rescuing.
+          highlight={hinted && targetCode ? [targetCode] : []}
           reveal
           showFingers
+          disabled={locked}
+          onKey={handleKey}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* build-sentence — the last quarter of the track                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A SENTENCE, TYPED WORD BY WORD.
+ *
+ * Deliberately the same screen as a word build with one thing added: the
+ * space bar. That is not a technicality — "English puts a gap between words"
+ * is a real thing to learn, and it is invisible until a child has to produce
+ * it. So the gap is drawn as a slot like any other, with its own target
+ * state, and the space bar is highlighted for it exactly as a letter key is.
+ *
+ * The Hebrew appears twice and they do different jobs. The whole sentence, in
+ * natural Hebrew, is the MEANING — it is the big line, and it is what the
+ * child is being asked to say. The word-under-word glosses are the MACHINERY,
+ * small and secondary: which English word is carrying which piece of it. A
+ * seven-year-old reading "אני רואה חתול" over "I SEE A CAT" can see for
+ * themselves that English spends a word on "A" where Hebrew spends none.
+ *
+ * No audio for these is recorded yet, and the design does not wait for it:
+ * `saySentence` plays a human recording the day one exists and the browser
+ * voice until then, and the Hebrew on screen is the channel that never fails.
+ */
+export function BuildSentenceView({
+  step,
+  onAnswer,
+  onAdvance,
+  forceHint,
+  locked,
+}: StepRenderProps & { step: BuildSentenceStep }) {
+  /** The sentence as a flat list of things to type: letters and the gaps. */
+  const tokens = useMemo(
+    () =>
+      step.sentence.split("").map((ch, i) => ({
+        i,
+        char: ch,
+        isSpace: ch === " ",
+        code: ch === " " ? "Space" : `Key${ch}`,
+      })),
+    [step.sentence],
+  );
+  const words = useMemo(() => step.sentence.split(" "), [step.sentence]);
+
+  const [filled, setFilled] = useState(0);
+  const [missHere, setMissHere] = useState(0);
+  const [done, setDone] = useState(false);
+  const doneRef = useRef(false);
+
+  useEffect(() => {
+    setFilled(0);
+    setMissHere(0);
+    setDone(false);
+    doneRef.current = false;
+  }, [step.id]);
+
+  const target = tokens[filled];
+  const targetCode = target?.code ?? null;
+  const hinted = step.hint || forceHint || missHere > 0;
+
+  const handleKey = useCallback(
+    (code: string, _char: string | null, activeLang: Lang) => {
+      if (locked || doneRef.current || !targetCode) return;
+      if (activeLang !== "en") {
+        playSfx("wrong");
+        return;
+      }
+      if (code === targetCode) {
+        playSfx("letter-lands");
+        setMissHere(0);
+        onAnswer(true);
+        setFilled((f) => {
+          const next = f + 1;
+          if (next >= tokens.length) {
+            doneRef.current = true;
+            setDone(true);
+            playSfx("celebrate");
+            saySentence(step.sentence);
+          }
+          return next;
+        });
+      } else {
+        playSfx("wrong");
+        setMissHere((n) => n + 1);
+        onAnswer(false);
+      }
+    },
+    [locked, targetCode, tokens.length, onAnswer, step.sentence],
+  );
+
+  if (done) {
+    return (
+      <div className="flex flex-col items-center gap-5 py-6">
+        <div className="efh-hero" aria-hidden>
+          {step.emoji}
+        </div>
+        <p className="ltr text-center text-3xl font-black leading-snug tracking-wide">
+          {step.sentence}
+        </p>
+        <p className="text-center text-2xl font-bold">{step.he}</p>
+        <button
+          type="button"
+          onClick={() => saySentence(step.sentence)}
+          aria-label="השמע את המשפט"
+          className="grid h-16 w-16 place-items-center rounded-full border-[3px] border-brand-soft bg-card text-3xl"
+        >
+          <span aria-hidden>🔊</span>
+        </button>
+        <BigButton icon="👉" onClick={onAdvance}>
+          יאללה, ממשיכים
+        </BigButton>
+      </div>
+    );
+  }
+
+  // Where each word starts in the flat token list, so a slot knows its index.
+  let cursor = 0;
+  const wordStarts = words.map((word) => {
+    const start = cursor;
+    cursor += word.length + 1; // +1 for the space that follows it
+    return start;
+  });
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card className="flex flex-col items-center gap-3">
+        <div className="flex items-center gap-3">
+          <span aria-hidden className="text-5xl">
+            {step.emoji}
+          </span>
+          <p className="text-2xl font-bold">{step.he}</p>
+        </div>
+
+        {/* The sentence under construction. Words stay visually whole, and
+            the gap between them is a slot of its own — that gap is the thing
+            this step exists to teach. */}
+        <div
+          className="efh-sentence ltr flex flex-wrap items-start justify-center gap-x-3 gap-y-3"
+          // The slots size themselves from how many there are, so a five-word
+          // sentence wraps between words instead of one word per line. See
+          // .efh-sentence in globals.css.
+          style={{ ["--efh-slots" as string]: String(tokens.length) }}
+          {...tourAttr("word-slots")}
+        >
+          {words.map((word, w) => (
+            <div key={`${word}-${w}`} className="flex items-start gap-1">
+              <div className="flex flex-col items-center gap-1">
+                <div className="flex gap-1">
+                  {word.split("").map((letter, k) => {
+                    const idx = wordStarts[w]! + k;
+                    return (
+                      <div
+                        key={`${letter}-${k}`}
+                        className="efh-slot"
+                        data-filled={idx < filled ? "1" : undefined}
+                        data-active={idx === filled ? "1" : undefined}
+                        aria-label={idx < filled ? letter : "ריק"}
+                      >
+                        {idx < filled ? letter : ""}
+                      </div>
+                    );
+                  })}
+                </div>
+                <span className="rtl text-xs font-bold text-ink-soft">
+                  {step.wordsHe[w] ?? ""}
+                </span>
+              </div>
+
+              {w < words.length - 1 ? (
+                (() => {
+                  const idx = wordStarts[w]! + word.length;
+                  return (
+                    <div
+                      className="efh-slot opacity-70"
+                      data-filled={idx < filled ? "1" : undefined}
+                      data-active={idx === filled ? "1" : undefined}
+                      aria-label={idx < filled ? "רווח" : "רווח ריק"}
+                    >
+                      <span aria-hidden className="text-ink-soft">
+                        ␣
+                      </span>
+                    </div>
+                  );
+                })()
+              ) : null}
+            </div>
+          ))}
+        </div>
+
+        {target ? (
+          <p className="text-center text-2xl font-bold">
+            {target.isSpace ? (
+              <>
+                עכשיו <span className="font-black">רווח</span> — המקש הארוך למטה
+              </>
+            ) : (
+              <>
+                עכשיו לחצו על{" "}
+                <span className="ltr text-3xl font-black">{target.char}</span>
+                {getLetter(target.char) ? (
+                  <span className="text-ink-soft">
+                    {" "}
+                    ({getLetter(target.char)?.nameHe})
+                  </span>
+                ) : null}
+              </>
+            )}
+          </p>
+        ) : null}
+
+        {missHere > 0 || forceHint ? (
+          <p className="text-center text-lg font-bold text-brand">
+            <span aria-hidden>👀 </span>
+            המקש המסומן — זה הוא
+          </p>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={() => saySentence(step.sentence)}
+          aria-label="השמע את המשפט"
+          className="grid h-16 w-16 place-items-center rounded-full border-[3px] border-brand-soft bg-card text-3xl"
+        >
+          <span aria-hidden>🔊</span>
+        </button>
+      </Card>
+
+      <div {...tourAttr("keyboard")}>
+        <KeyboardSurface
+          lang="en"
+          requiredLang="en"
+          highlight={hinted && targetCode ? [targetCode] : []}
+          reveal
           disabled={locked}
           onKey={handleKey}
         />

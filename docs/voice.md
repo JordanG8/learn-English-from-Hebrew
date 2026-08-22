@@ -32,11 +32,24 @@ than hand-written, so adding a letter or a word adds its line automatically.
 | ההדרכה | 3 | The first-visit walkthrough cards, in Hebrew. |
 | שמות האותיות | 26 | The letter *names* — "A", "B"… |
 | צלילי האותיות | 26 | The letter *sounds* — "ah", "buh"… |
-| מילים | ~54 | Every word the child builds or hears, plus the per-letter example words. |
-| כרטיסי שיעור (רשות) | ~73 | The Hebrew explanation cards inside lessons. These were never spoken before, so recording them is an upgrade, not a requirement. |
+| מילים | ~91 | Every word the child builds or hears, plus the per-letter example words. |
+| משפטים | 50 | The sentences of levels 76–100. **None of these are recorded.** |
+| כרטיסי שיעור (רשות) | ~62 | The Hebrew explanation cards inside lessons. These were never spoken before, so recording them is an upgrade, not a requirement. |
 
 The headline progress bar counts only the non-optional groups: finishing the
 lines the app actually speaks should read as finished.
+
+**The sentence group is deliberately in the required set, and deliberately
+empty.** The sentence phase shipped without waiting for a voice: every
+sentence line has a TTS fallback, so a child on level 76 hears the browser
+read "I SEE A CAT" today, and hears a person read it the day somebody records
+it — no code change, no deploy. Counting the group as required is the honest
+accounting: the app speaks these lines, nobody has recorded them, and the
+progress bar should say so rather than reporting 100% while a synthesiser
+reads sentences to a seven-year-old. Sentences are also where a recording is
+worth the most — prosody is most of what makes a sentence comprehensible, and
+it is the one thing TTS cannot fake at this reading level. If you record
+anything next, record these.
 
 **Hebrew lines have no TTS fallback, deliberately.** A robotic Hebrew voice
 reading to a seven-year-old is worse than the silence the app shipped with,
@@ -98,6 +111,23 @@ If the variable is not set:
 The passcode is compared in constant time and is never sent back to the
 browser.
 
+### A saved passcode also unlocks the whole track
+
+A device that has the studio passcode saved is an author's device, so the app
+stops gating levels on it: every level on the road is open, and conversation
+mode is too. That is how you play a lesson you wrote five minutes ago without
+first completing the twenty before it. The road shows a 🔓 chip next to the
+star counter while this is in effect, and the flat (no-WebGL) list shows the
+whole track instead of a window around where the child is.
+
+It lifts locks and nothing else — no lesson is marked complete, no stars are
+awarded, and the pencil still stands where the real progress put it, so the
+level-up cinematic stays honest. Nothing here is a security boundary either:
+it is a local flag (`lib/studio-unlock.ts`) reading the same localStorage key
+the studio writes, and every *write* to the voice store still needs the real
+passcode checked on the server. Pressing "שכח סיסמה" in the studio clears the
+key and puts the locks straight back.
+
 ## Committing the recordings
 
 The blob store is the fast path, not the final home: it can be deleted, it is
@@ -140,14 +170,20 @@ say has three possible sources, and it always takes the best one available:
 | 2 | **A speech model** | `fish-audio/s2.1-pro` through the AI Gateway, cached as mp3 | A line nobody has recorded |
 | 3 | **The browser** | `speechSynthesis`, English only | Neither of the above |
 
-Tier 1 is the whole catalogue today — all 182 lines are recorded — so tier 2
-is a safety net rather than something a child hears. It earns its place at
-three moments:
+Tier 1 covers everything a human has recorded, which is every letter, every
+word and every Hebrew card. **The 50 sentences of levels 76–100 are not
+recorded**, so they are where tier 2 earns its keep today — and they are the
+best possible case for it, because prosody is most of what makes a sentence
+comprehensible and a browser voice has none. A child on level 76 is the one
+person in the app who currently hears the difference.
 
-- **A line that is added later.** A new letter or word is speakable the moment
-  it exists, in a real voice, instead of waiting for a recording session.
+It also earns its place at three quieter moments:
+
+- **A line that is added later.** A new letter, word or sentence is speakable
+  the moment it exists, in a real voice, instead of waiting for a recording
+  session — which is exactly the state the sentence phase shipped in.
 - **Hebrew.** Hebrew lines have no browser fallback on purpose (see above), so
-  before recordings existed an unrecorded card was silent. Fish's S2 line is
+  an unrecorded card would be silent rather than robotic. Fish's S2 line is
   multilingual, so tier 2 covers Hebrew as well as English.
 - **In the studio.** Every line now has a **🎧 קול AI** button next to
   **▶️ ההקלטה שלי**, so the person recording can hear the model's reading of
@@ -156,15 +192,18 @@ three moments:
 
 ### What the model is told
 
-`lib/voice/synth.ts` sends a different direction per group, because the four
-groups need four genuinely different readings:
+`lib/voice/synth.ts` sends a different direction per group, because the groups
+need genuinely different readings:
 
 - **Letter sounds** get the IPA the curriculum already carries (`/b/`, not
   `"buh"`) plus an explicit instruction that this is a phoneme in isolation
   with no trailing vowel. This is the line browser TTS gets worst and the
   reason this tier is interesting at all.
+- **Sentences** are told to read as one phrase with real sentence intonation,
+  and explicitly not word by word — a sentence read at dictation speed has
+  thrown away the only thing it had over a list of words.
 - **Letter names**, **words** and **Hebrew narration** each get their own pace
-  and their own instruction. All four say the listener is a seven-year-old.
+  and their own instruction. All of them say the listener is a seven-year-old.
 
 Changing any of that direction means bumping `DIRECTION_VERSION`, which is
 part of the cache path, so every line regenerates rather than serving
@@ -270,7 +309,12 @@ Two rules the player enforces, both learned the hard way:
 
 ### Adding a new line
 
-Add the letter or the word to the curriculum. It appears in the studio on the
-next load, unrecorded, using TTS until someone records it. Nothing else to do.
+Add the letter, the word or the sentence to the curriculum. It appears in the
+studio on the next load, unrecorded, using TTS until someone records it.
+Nothing else to do.
 
-Renaming an existing id orphans its recording — the id *is* the filename.
+Renaming an existing id orphans its recording — the id *is* the filename. For
+a sentence the id is derived from the words themselves
+(`"I SEE A CAT"` → `sentence-i-see-a-cat`), so **editing the wording of a
+sentence orphans its recording too**. Adding a sentence is free; rewording one
+that has been recorded is not.

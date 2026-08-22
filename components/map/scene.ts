@@ -25,6 +25,7 @@
 import * as THREE from "three";
 
 import { ADV_CROUCH, ADV_FLIGHT, ADV_IMPACT, ADV_SETTLE, ADV_STILL } from "./timing";
+import { PAD_WINDOW_BACK, PAD_WINDOW_FORWARD, padWindowIndices } from "./window";
 
 export interface LevelNode {
   id: string;
@@ -218,6 +219,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.08;
   renderer.shadowMap.enabled = !opts.reducedMotion;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -427,6 +430,13 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   }
 
   const swayers: { g: THREE.Group; phase: number; amp: number }[] = [];
+  const floaters: {
+    g: THREE.Object3D;
+    home: THREE.Vector3;
+    phase: number;
+    drift: number;
+    lift: number;
+  }[] = [];
 
   const bushGeo = new THREE.IcosahedronGeometry(0.55, 0);
   const rockGeo = new THREE.DodecahedronGeometry(0.45, 0);
@@ -521,6 +531,161 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     return g;
   }
 
+  /* --- storybook landmarks ------------------------------------------- */
+  /*
+   * These are intentionally made from a tiny shared geometry vocabulary.
+   * The scene can feel hand-authored without asking a school tablet to carry
+   * imported models or dozens of textures.
+   */
+  const bookCoverGeo = new THREE.BoxGeometry(4.8, 0.22, 3.25);
+  const bookPageGeo = new THREE.BoxGeometry(4.4, 0.48, 2.9);
+  const bookPageMat = new THREE.MeshLambertMaterial({ color: 0xfff7dc });
+  const bookCoverMats = [0x4d6fa7, 0x7a5a91, 0x3e7b78, 0x9a5f6f].map(
+    (color) => new THREE.MeshLambertMaterial({ color }),
+  );
+  const bookmarkMat = new THREE.MeshLambertMaterial({ color: 0xe4a94f });
+
+  function bookStack(seed: number): THREE.Group {
+    const random = mulberry(seed);
+    const g = new THREE.Group();
+    const count = 2 + Math.floor(random() * 3);
+    for (let i = 0; i < count; i++) {
+      const layer = new THREE.Group();
+      const pages = new THREE.Mesh(bookPageGeo, bookPageMat);
+      pages.castShadow = !opts.reducedMotion;
+      pages.receiveShadow = !opts.reducedMotion;
+      layer.add(pages);
+
+      const coverMat = bookCoverMats[(seed + i) % bookCoverMats.length];
+      for (const y of [-0.34, 0.34]) {
+        const cover = new THREE.Mesh(bookCoverGeo, coverMat);
+        cover.position.y = y;
+        cover.castShadow = !opts.reducedMotion;
+        layer.add(cover);
+      }
+      layer.position.y = 0.36 + i * 0.78;
+      layer.rotation.y = (random() - 0.5) * 0.55;
+      layer.scale.setScalar(0.82 + random() * 0.23);
+      g.add(layer);
+    }
+    const ribbon = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.05, 3.75), bookmarkMat);
+    ribbon.position.set(0.7, count * 0.77 + 0.08, 0.45);
+    ribbon.rotation.y = 0.2;
+    g.add(ribbon);
+    return g;
+  }
+
+  function openBook(): THREE.Group {
+    const g = new THREE.Group();
+    const pageGeo = new THREE.BoxGeometry(4.5, 0.18, 3.2);
+    for (const side of [-1, 1]) {
+      const page = new THREE.Mesh(pageGeo, bookPageMat);
+      page.position.set(side * 2.05, 0.35, 0);
+      page.rotation.z = side * -0.13;
+      page.rotation.y = side * 0.07;
+      page.castShadow = !opts.reducedMotion;
+      g.add(page);
+
+      // Three printed rules are enough to read as a page at map distance.
+      for (let line = 0; line < 3; line++) {
+        const rule = new THREE.Mesh(
+          new THREE.BoxGeometry(2.3 - line * 0.25, 0.035, 0.09),
+          new THREE.MeshBasicMaterial({ color: 0x9aa7b8 }),
+        );
+        rule.position.set(side * (1.6 + line * 0.06), 0.57, -0.7 + line * 0.7);
+        rule.rotation.z = side * -0.13;
+        rule.rotation.y = side * 0.07;
+        g.add(rule);
+      }
+    }
+    const spine = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.18, 0.18, 3.3, 8),
+      bookCoverMats[1],
+    );
+    spine.rotation.x = Math.PI / 2;
+    spine.position.y = 0.18;
+    g.add(spine);
+    return g;
+  }
+
+  function pond(seed: number): THREE.Group {
+    const random = mulberry(seed);
+    const g = new THREE.Group();
+    const water = new THREE.Mesh(
+      new THREE.CircleGeometry(5.3, 28),
+      new THREE.MeshPhongMaterial({
+        color: 0x76b7c5,
+        emissive: 0x153d49,
+        emissiveIntensity: 0.08,
+        shininess: 90,
+        transparent: true,
+        opacity: 0.82,
+        side: THREE.DoubleSide,
+      }),
+    );
+    water.rotation.x = -Math.PI / 2;
+    water.scale.set(1.35, 0.78, 1);
+    water.position.y = 0.13;
+    g.add(water);
+
+    const bankMat = new THREE.MeshLambertMaterial({ color: 0xb9aa7c, flatShading: true });
+    const bankGeo = new THREE.DodecahedronGeometry(0.42, 0);
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      const bank = new THREE.Mesh(bankGeo, bankMat);
+      bank.position.set(Math.cos(a) * 6.3, 0.16, Math.sin(a) * 4.25);
+      bank.scale.set(0.7 + random() * 0.8, 0.45 + random() * 0.35, 0.7 + random() * 0.8);
+      bank.rotation.set(random(), random(), random());
+      bank.castShadow = !opts.reducedMotion;
+      g.add(bank);
+    }
+
+    const reedMat = new THREE.MeshLambertMaterial({ color: 0x567a3f });
+    for (let i = 0; i < 16; i++) {
+      const a = random() * Math.PI * 2;
+      const reed = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.055, 1.4, 4), reedMat);
+      reed.position.set(Math.cos(a) * (4.8 + random()), 0.72, Math.sin(a) * (3.2 + random() * 0.7));
+      reed.rotation.z = (random() - 0.5) * 0.16;
+      g.add(reed);
+    }
+    return g;
+  }
+
+  function cloud(seed: number): THREE.Group {
+    const random = mulberry(seed);
+    const g = new THREE.Group();
+    const material = new THREE.MeshLambertMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.72,
+      depthWrite: false,
+      flatShading: true,
+    });
+    for (let i = 0; i < 5; i++) {
+      const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(1.7, 1), material);
+      puff.position.set((i - 2) * 1.75, Math.sin(i * 1.7) * 0.55, (random() - 0.5) * 1.8);
+      puff.scale.set(1 + random() * 0.7, 0.65 + random() * 0.45, 0.8 + random() * 0.5);
+      g.add(puff);
+    }
+    return g;
+  }
+
+  function paperPlane(): THREE.Mesh {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(
+        [0, 0, -1.9, -1.35, 0, 1.2, 0, 0.22, 0.55, 0, 0.22, 0.55, 1.35, 0, 1.2, 0, 0, -1.9],
+        3,
+      ),
+    );
+    geometry.computeVertexNormals();
+    return new THREE.Mesh(
+      geometry,
+      new THREE.MeshLambertMaterial({ color: 0xf8f3e8, side: THREE.DoubleSide }),
+    );
+  }
+
   /* --- leaves on the wind -------------------------------------------- */
   const LEAF_COUNT = 130;
   let leaves: THREE.InstancedMesh | null = null;
@@ -566,10 +731,16 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     group: THREE.Group;
     index: number;
     node: LevelNode;
+    signature: string;
     ring: THREE.Mesh | null;
     top: THREE.Mesh;
   }
   let pads: Pad[] = [];
+  const padMap = new Map<number, Pad>();
+
+  function padSignature(node: LevelNode): string {
+    return [node.id, node.label, node.unlocked, node.done, node.isNext, node.isChat].join("|");
+  }
 
   function buildPad(node: LevelNode, index: number): Pad {
     const g = new THREE.Group();
@@ -691,7 +862,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     g.add(hit);
 
     padGroup.add(g);
-    return { group: g, index, node, ring, top };
+    return { group: g, index, node, signature: padSignature(node), ring, top };
   }
 
   /* --- the player: a pencil standing on its eraser --------------------- */
@@ -869,40 +1040,86 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   let built = false;
   let disposed = false;
 
-  const WINDOW_BACK = 4;
-  const WINDOW_FWD = 9;
+  const WINDOW_MEMORY_MS = 1200;
+  const WINDOW_MEMORY_COUNT = 3;
+  let focusTrail: { index: number; until: number }[] = [];
+  let nextPadPruneAt = 0;
+
+  function disposePad(p: Pad) {
+    p.group.traverse((o) => {
+      if (o instanceof THREE.Mesh) {
+        if (
+          o.geometry !== padGeo &&
+          o.geometry !== stumpGeo &&
+          o.geometry !== ringGeo &&
+          o.geometry !== hitGeo
+        ) {
+          o.geometry.dispose();
+        }
+        const m = o.material as THREE.Material | THREE.Material[];
+        if (Array.isArray(m)) m.forEach((x) => x.dispose());
+        else m.dispose();
+      }
+    });
+    padGroup.remove(p.group);
+    padMap.delete(p.index);
+  }
 
   function clearPads() {
-    for (const p of pads) {
-      p.group.traverse((o) => {
-        if (o instanceof THREE.Mesh) {
-          if (
-            o.geometry !== padGeo &&
-            o.geometry !== stumpGeo &&
-            o.geometry !== ringGeo &&
-            o.geometry !== hitGeo
-          ) {
-            o.geometry.dispose();
-          }
-          const m = o.material as THREE.Material | THREE.Material[];
-          if (Array.isArray(m)) m.forEach((x) => x.dispose());
-          else m.dispose();
-        }
-      });
-      padGroup.remove(p.group);
-    }
+    for (const p of [...padMap.values()]) disposePad(p);
     pads = [];
+    focusTrail = [];
+    nextPadPruneAt = 0;
   }
 
-  /** Rebuild only the pads near the focus. 100 lessons, ~14 meshes. */
-  function refreshPads() {
-    clearPads();
-    const from = Math.max(0, focusIndex - WINDOW_BACK);
-    const to = Math.min(levels.length, focusIndex + WINDOW_FWD);
-    for (let i = from; i < to; i++) pads.push(buildPad(levels[i], i));
+  /**
+   * Keep the last few destinations alive for one camera glide. The old
+   * implementation deleted every source pad the instant a destination was
+   * tapped. A second quick tap therefore landed on empty space even though
+   * the old pad was still visibly under the pointer.
+   */
+  function rememberFocus(index: number, now = performance.now()) {
+    focusTrail = focusTrail.filter((entry) => entry.index !== index && entry.until > now);
+    focusTrail.unshift({ index, until: now + WINDOW_MEMORY_MS });
+    focusTrail = focusTrail.slice(0, WINDOW_MEMORY_COUNT);
   }
 
-  function buildScenery() {
+  function desiredPadIndices(now: number): Set<number> {
+    focusTrail = focusTrail.filter((entry) => entry.until > now);
+    const anchors = [focusIndex, ...focusTrail.map((entry) => entry.index)];
+    const desired = new Set(
+      padWindowIndices(levels.length, anchors, PAD_WINDOW_BACK, PAD_WINDOW_FORWARD),
+    );
+    nextPadPruneAt = focusTrail.length
+      ? Math.min(...focusTrail.map((entry) => entry.until))
+      : 0;
+    return desired;
+  }
+
+  /** Incrementally reconcile the live pad windows instead of blanking them. */
+  function refreshPads(now = performance.now()) {
+    const desired = desiredPadIndices(now);
+
+    for (const [index, pad] of [...padMap.entries()]) {
+      const node = levels[index];
+      if (!desired.has(index) || !node || pad.signature !== padSignature(node)) {
+        disposePad(pad);
+      }
+    }
+
+    for (const index of desired) {
+      if (padMap.has(index)) continue;
+      const node = levels[index];
+      if (!node) continue;
+      const pad = buildPad(node, index);
+      padMap.set(index, pad);
+    }
+
+    pads = [...padMap.values()].sort((a, b) => a.index - b.index);
+  }
+
+  function buildScenery(count: number) {
+    const extent = Math.max(count, 46);
     /*
      * Distant hills. The camera is orthographic and tilted down, so without
      * something standing up at the far end the top of the frame is simply more
@@ -910,8 +1127,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
      * the fog, so they are a silhouette rather than a place.
      */
     const hillMat = new THREE.MeshLambertMaterial({ color: 0x7fb46a, flatShading: true });
-    for (let i = 0; i < 14; i++) {
-      const along = 30 + i * 3.4;
+    for (let i = 0; i < 18; i++) {
+      const along = extent * 0.55 + i * 2.8;
       const base = nodePosition(along);
       const off = (rnd() - 0.5) * 150;
       const h = new THREE.Mesh(new THREE.ConeGeometry(16 + rnd() * 18, 9 + rnd() * 12, 5), hillMat);
@@ -921,7 +1138,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     }
 
     // Trees along both verges, thinning near the road so pads stay readable.
-    for (let i = -2; i < 44; i++) {
+    for (let i = -2; i < extent; i++) {
       const base = nodePosition(i);
       for (const side of [-1, 1]) {
         if (rnd() < 0.16) continue;
@@ -942,13 +1159,78 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
         );
       }
     }
+
+    /*
+     * Hundreds of grass blades sound expensive; one instanced triangle is
+     * not. They catch the sun at different angles and remove the last broad,
+     * empty patches of "green floor" without adding draw calls per blade.
+     */
+    const grassCount = Math.min(720, extent * 13);
+    const tuftGeo = new THREE.ConeGeometry(0.12, 0.72, 3);
+    tuftGeo.translate(0, 0.36, 0);
+    const tufts = new THREE.InstancedMesh(
+      tuftGeo,
+      new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }),
+      grassCount,
+    );
+    const dummy = new THREE.Object3D();
+    const grassColors = [0x4f8d3e, 0x69a94d, 0x88bc59, 0x3f7a33].map(
+      (color) => new THREE.Color(color),
+    );
+    for (let i = 0; i < grassCount; i++) {
+      const at = Math.floor(rnd() * extent);
+      const base = nodePosition(at);
+      const side = rnd() < 0.5 ? -1 : 1;
+      const off = side * (4.3 + rnd() * 22);
+      const along = (rnd() - 0.5) * SPACING;
+      const x = base.x + SIDE.x * off + FWD.x * along;
+      const z = base.z + SIDE.z * off + FWD.z * along;
+      dummy.position.set(x, terrainHeight(x, z), z);
+      dummy.rotation.set((rnd() - 0.5) * 0.16, rnd() * Math.PI, (rnd() - 0.5) * 0.2);
+      const s = 0.55 + rnd() * 1.45;
+      dummy.scale.set(s, s, s);
+      dummy.updateMatrix();
+      tufts.setMatrixAt(i, dummy.matrix);
+      tufts.setColorAt(i, grassColors[Math.floor(rnd() * grassColors.length)]);
+    }
+    tufts.instanceMatrix.needsUpdate = true;
+    if (tufts.instanceColor) tufts.instanceColor.needsUpdate = true;
+    tufts.frustumCulled = false;
+    scenery.add(tufts);
+
+    /* Small boundary stones make the worn road feel pressed into the meadow. */
+    const edgingCount = extent * 5;
+    const edging = new THREE.InstancedMesh(
+      new THREE.DodecahedronGeometry(0.22, 0),
+      new THREE.MeshLambertMaterial({ color: 0xb8aa8d, flatShading: true }),
+      edgingCount,
+    );
+    for (let i = 0; i < edgingCount; i++) {
+      const at = (i / edgingCount) * extent;
+      const base = nodePosition(at);
+      const side = i % 2 === 0 ? -1 : 1;
+      const along = (rnd() - 0.5) * 1.5;
+      const x = base.x + SIDE.x * side * (2.28 + rnd() * 0.32) + FWD.x * along;
+      const z = base.z + SIDE.z * side * (2.28 + rnd() * 0.32) + FWD.z * along;
+      dummy.position.set(x, terrainHeight(x, z) + 0.08, z);
+      dummy.rotation.set(rnd(), rnd(), rnd());
+      const s = 0.45 + rnd() * 0.75;
+      dummy.scale.set(s, 0.6 * s, s);
+      dummy.updateMatrix();
+      edging.setMatrixAt(i, dummy.matrix);
+    }
+    edging.instanceMatrix.needsUpdate = true;
+    edging.castShadow = !opts.reducedMotion;
+    edging.receiveShadow = !opts.reducedMotion;
+    scenery.add(edging);
+
     /*
      * The alphabet ruins are the landmark that makes the road somewhere rather
      * than anywhere. One prop parked at level 2 was invisible by level 4, so
      * they recur: a monument every dozen levels or so, alternating verges,
      * each sunk to its own depth. Whatever you have climbed, one is in view.
      */
-    for (let n = 0; n < 4; n++) {
+    for (let n = 0; n < Math.ceil(extent / 12); n++) {
       const at = 3 + n * 12;
       const side = n % 2 === 0 ? -1 : 1;
       const anchor = nodePosition(at);
@@ -957,6 +1239,75 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       r.rotation.y = Math.PI * 0.25 + n * 0.7;
       r.scale.setScalar(1.6 + rnd() * 0.5);
       scenery.add(r);
+    }
+
+    /*
+     * Book gardens alternate with the stone alphabet. Each cluster is a tiny
+     * scene: a stack, an open page, and a warm marker ribbon. Repetition gives
+     * the road rhythm; small rotations stop it looking procedurally stamped.
+     */
+    for (let n = 0, at = 8; at < extent; n++, at += 13) {
+      const side = n % 2 === 0 ? 1 : -1;
+      const anchor = nodePosition(at);
+      const x = anchor.x + SIDE.x * 14.5 * side;
+      const z = anchor.z + SIDE.z * 14.5 * side;
+      const books = bookStack(0xb00c + n * 91);
+      books.position.set(x, terrainHeight(x, z), z);
+      books.rotation.y = Math.PI * 0.25 + n * 0.8;
+      books.scale.setScalar(1.1 + (n % 3) * 0.12);
+      scenery.add(books);
+
+      const open = openBook();
+      const ox = x + FWD.x * 5.2 + SIDE.x * side * 1.4;
+      const oz = z + FWD.z * 5.2 + SIDE.z * side * 1.4;
+      open.position.set(ox, terrainHeight(ox, oz), oz);
+      open.rotation.y = -Math.PI * 0.25 + n * 0.55;
+      open.scale.setScalar(0.82);
+      scenery.add(open);
+    }
+
+    /* Water breaks the green palette and gives the journey real places. */
+    for (let n = 0, at = 13; at < extent; n++, at += 17) {
+      const side = n % 2 === 0 ? -1 : 1;
+      const anchor = nodePosition(at);
+      const x = anchor.x + SIDE.x * 20 * side;
+      const z = anchor.z + SIDE.z * 20 * side;
+      const p = pond(0x90ad + n * 137);
+      p.position.set(x, terrainHeight(x, z) - 0.13, z);
+      p.rotation.y = n * 0.8;
+      scenery.add(p);
+    }
+
+    /* High silhouettes add depth without competing with the playable pads. */
+    for (let n = 0, at = 4; at < extent; n++, at += 9) {
+      const anchor = nodePosition(at);
+      const side = n % 2 === 0 ? -1 : 1;
+      const c = cloud(0xc10d + n * 31);
+      const home = new THREE.Vector3(
+        anchor.x + SIDE.x * side * (20 + (n % 3) * 5),
+        terrainHeight(anchor.x, anchor.z) + 16 + (n % 2) * 4,
+        anchor.z + SIDE.z * side * (20 + (n % 3) * 5),
+      );
+      c.position.copy(home);
+      c.scale.setScalar(0.78 + (n % 3) * 0.16);
+      scenery.add(c);
+      floaters.push({ g: c, home, phase: n * 1.7, drift: 0.65, lift: 0.35 });
+    }
+
+    for (let n = 0, at = 6; at < extent; n++, at += 8) {
+      const anchor = nodePosition(at);
+      const side = n % 2 === 0 ? 1 : -1;
+      const plane = paperPlane();
+      const home = new THREE.Vector3(
+        anchor.x + SIDE.x * side * 10,
+        terrainHeight(anchor.x, anchor.z) + 8 + (n % 3) * 1.6,
+        anchor.z + SIDE.z * side * 10,
+      );
+      plane.position.copy(home);
+      plane.rotation.set(0.15, Math.PI * 0.25 + n * 0.9, -0.1);
+      plane.scale.setScalar(0.8 + (n % 2) * 0.25);
+      scenery.add(plane);
+      floaters.push({ g: plane, home, phase: n * 2.1, drift: 1.4, lift: 0.8 });
     }
   }
 
@@ -1150,6 +1501,10 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     const dt = Math.min(clock.getDelta(), 0.05);
     const t = clock.elapsedTime;
 
+    // Once the camera has had time to leave an old destination, release its
+    // retained pads. This is one small reconcile, not a rebuild every frame.
+    if (nextPadPruneAt > 0 && performance.now() >= nextPadPruneAt) refreshPads();
+
     /* --- pan physics: flick, friction, rubber band, drift home -------- */
     if (!down && !opts.reducedMotion) {
       if (Math.abs(panVel) > 0.01) {
@@ -1329,6 +1684,15 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       for (const s of swayers) {
         s.g.rotation.z = Math.sin(t * 1.1 + s.phase) * s.amp;
       }
+      for (const f of floaters) {
+        const wave = t * 0.22 + f.phase;
+        f.g.position.set(
+          f.home.x + Math.cos(wave) * f.drift,
+          f.home.y + Math.sin(wave * 1.7) * f.lift,
+          f.home.z + Math.sin(wave) * f.drift,
+        );
+        f.g.rotation.z = Math.sin(wave * 1.35) * 0.045;
+      }
       for (const p of pads) {
         if (p.ring) {
           const k = 1 + Math.sin(t * 3) * 0.08;
@@ -1384,12 +1748,14 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     /** Hand the world the track. Safe to call again when progress changes. */
     setLevels(next: LevelNode[], focus: number, player: number) {
       levels = next;
+      if (focusIndex !== focus) rememberFocus(focusIndex);
       focusIndex = focus;
+      rememberFocus(focus);
       if (!built) {
         built = true;
         road = buildRoad(Math.max(next.length, 46));
         scene.add(road);
-        buildScenery();
+        buildScenery(Math.max(next.length, 46));
         camTarget.copy(nodePosition(focus + 0.8));
         placeCamera();
         resize();
@@ -1413,7 +1779,9 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
      * feedback the road has on browsing.
      */
     focus(index: number) {
+      if (focusIndex !== index) rememberFocus(focusIndex);
       focusIndex = index;
+      rememberFocus(index);
       panGoal = 0;
       panVel = 0;
       lastTouchAt = performance.now();
@@ -1431,7 +1799,9 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
      * asked to stop being told they finished a level.
      */
     advance(from: number, to: number) {
+      if (focusIndex !== to) rememberFocus(focusIndex);
       focusIndex = to;
+      rememberFocus(to);
       panGoal = 0;
       panOffset = 0;
       panVel = 0;

@@ -235,7 +235,17 @@ export const MIXED_REVIEW_STEPS = 8;
 export const MIXED_REVIEW_MAX_FILLER = 3;
 
 /** How many lessons of other kinds before a mixed review is inserted.
- *  Interleaving cadence. [conf C] */
+ *  Interleaving cadence. [conf C]
+ *
+ *  SUPERSEDED AS A MECHANISM, KEPT AS THE INTENT. The alphabet phase now fits
+ *  reviews to its level budget instead of counting to N — see §9 and
+ *  `insertReviews` in lib/curriculum/lessons.ts — because a fixed cadence
+ *  makes the length of the phase a consequence of the content rather than a
+ *  promise the track keeps. The fitted cadence lands near this number; if it
+ *  drifts far from it, the phase budget is what needs re-examining.
+ *
+ *  Levels 51+ carry no review lessons at all. They warm up instead — see
+ *  WARMUP_STEPS_WORD_PHASE. */
 export const MIXED_REVIEW_EVERY_N_LESSONS = 3;
 
 /** Wrong answers on one step before the app shows the answer and moves on.
@@ -400,3 +410,103 @@ export const HANDWRITING_STEP_REQUIRED = true;
  *  app therefore teaches WHERE keys are, not finger discipline; finger colour
  *  coding is available but never required. */
 export const TOUCH_TYPING_HOME_ROW_MIN_AGE = 9;
+
+/* ------------------------------------------------------------------ */
+/* 9. Track shape — where the 100 levels go                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE THREE PHASES.
+ *
+ * The track used to be one undifferentiated ramp: letters and their payoff
+ * words alternating for sixty levels, then thirty-odd levels of leftover
+ * words, then nothing. Two things were wrong with it. The alphabet — the
+ * thing this app exists to teach — was not finished until level 60, and a
+ * child who got that far had still never seen two English words next to each
+ * other. So the track is now cut into three declared phases:
+ *
+ *   levels  1–50   THE ALPHABET.  Every one of the 26 letters is introduced,
+ *                  spent on a real word inside its own lesson, drilled, and
+ *                  reviewed. Level 50 is the A-to-Z milestone: by the time a
+ *                  child stands on it, there is no letter they have not met.
+ *   levels 51–75   WORDS.         No new letters. Volume and independence
+ *                  instead: the number of words per level climbs from
+ *                  WORD_LESSON_WORDS_MIN to WORD_LESSON_WORDS_MAX, and part
+ *                  way through, the keyboard stops pointing at the next key.
+ *   levels 76–100  SENTENCES.     The last quarter. Words are put side by
+ *                  side — "I SEE A CAT" — and the space bar becomes content.
+ *
+ * [conf C — this is a product shape, not a research finding. What the
+ * research does support is the ordering inside it: letters are spent
+ * immediately (never in a vacuum), practice is distributed rather than
+ * blocked, and the scaffold comes down on a schedule rather than all at once.]
+ *
+ * These four numbers must sum correctly; `lib/curriculum/lessons.ts` builds
+ * each phase to fit its budget exactly and exports TRACK_SHAPE so the
+ * arithmetic is checkable rather than assumed.
+ */
+export const TRACK_TOTAL_LEVELS = 100;
+export const ALPHABET_PHASE_LEVELS = 50;
+export const WORD_PHASE_LEVELS = 25;
+export const SENTENCE_PHASE_LEVELS = 25;
+
+/**
+ * ALPHABET PHASE. The 26 letter lessons, three keyboard-mechanics lessons and
+ * the A-to-Z milestone are fixed content; typing drills and mixed reviews fill
+ * whatever room is left, which is what makes the phase land on exactly
+ * ALPHABET_PHASE_LEVELS however many letters or drills are added later.
+ */
+/** A typing drill (already-known words, no new letter) every N letters. */
+export const LETTER_DRILL_EVERY_N_LETTERS = 4;
+/** Words in one of those drills. */
+export const LETTER_DRILL_WORDS = 2;
+
+/**
+ * WORD PHASE. Words per level, ramped linearly across the phase. [conf C]
+ * The ramp is the whole point of the phase — "one more word than last time"
+ * is a difficulty curve a seven-year-old can feel without being told about it.
+ */
+export const WORD_LESSON_WORDS_MIN = 2;
+export const WORD_LESSON_WORDS_MAX = 5;
+/**
+ * Fraction of the word phase that still spotlights the next key. After it,
+ * the caps still carry their legends but nothing points at one, so finding a
+ * key becomes recall. See the keyboard README, rule 3: `reveal` is the
+ * scaffold dial and `highlight` is the weaker fade in between. [conf B —
+ * fading a scaffold on a schedule is well evidenced; the exact fraction is
+ * ours.]
+ */
+export const WORD_PHASE_HINT_FRACTION = 0.4;
+
+/**
+ * SENTENCE PHASE. Sentences per level, indexed by sentence tier (1, 2, 3).
+ * A tier-3 sentence is twice the keystrokes of a tier-1 one, so the COUNT
+ * comes down as the length goes up — the level stays roughly the same size
+ * of job. [conf C]
+ */
+export const SENTENCES_PER_LESSON: readonly number[] = [3, 3, 2];
+/**
+ * Where the sentence phase moves up a tier, as fractions of the phase.
+ * With a 25-level phase: levels 76–83 are two-word sentences, 84–92 are
+ * three-word, 93–100 are four and five.
+ */
+export const SENTENCE_TIER_CUTS: readonly number[] = [0.32, 0.68];
+/** Fraction of the sentence phase that still spotlights the next key. */
+export const SENTENCE_PHASE_HINT_FRACTION = 0.5;
+
+/**
+ * WARM-UPS — how the alphabet stays alive after level 50.
+ *
+ * Levels 51+ contain no letter lessons and no review levels, because "more
+ * words to type" is the promise the road makes there. But the chat gate is
+ * evidence-based (every letter's name and sound mastered, across distinct
+ * days, with a delayed retention check), and evidence stops accumulating for
+ * a skill nothing asks about. So every word and sentence lesson opens with a
+ * couple of SRS-chosen questions about whatever is closest to slipping.
+ *
+ * A warm-up draws only from what is genuinely due or weakest; when the
+ * scheduler has nothing to say, the lesson starts on its first word. [conf A
+ * for distributed retrieval; conf C for the count.]
+ */
+export const WARMUP_STEPS_WORD_PHASE = 2;
+export const WARMUP_STEPS_SENTENCE_PHASE = 2;

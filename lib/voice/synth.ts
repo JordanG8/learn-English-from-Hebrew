@@ -13,9 +13,14 @@
  *   3. The browser's own SpeechSynthesis voice, which is where the app used to
  *      stop, and where it still stops if neither of the above is available.
  *
- * Tier 2 exists because tier 3 fails at exactly the two things this app is
- * made of:
+ * Tier 2 exists because tier 3 fails at exactly the things this app is made
+ * of:
  *
+ *   · SENTENCES. Levels 76-100 shipped with fifty English sentences that
+ *     nobody has recorded, so today they are read by the browser voice —
+ *     the one place in the app where a child actually hears it. Prosody is
+ *     most of what makes a sentence comprehensible, and prosody is precisely
+ *     what a browser voice does not have.
  *   · LETTER SOUNDS. "buh", "ss", "kuh" are not words, so a browser voice
  *     guesses at them — and guesses differently on an iPhone than on a school
  *     Chromebook. A speech model that takes an `instructions` string can be
@@ -187,6 +192,20 @@ export function directionFor(line: VoiceLine): Direction {
           `"bat" as "buh-a-tuh". ${CHILD}`,
       };
     }
+    case "sentence":
+      return {
+        text: line.text,
+        language: "en",
+        // Slower than a word, but not word-by-word: the whole reason a
+        // recorded sentence beats a recorded word is prosody, and a sentence
+        // read at dictation speed has none.
+        speed: 0.85,
+        instructions:
+          `Read this short English sentence aloud as one phrase, with natural ` +
+          `sentence intonation — falling at a full stop, rising at a question ` +
+          `mark. Do not read it word by word, and do not stress every word ` +
+          `equally. ${CHILD}`,
+      };
     case "word":
       return {
         text: line.text,

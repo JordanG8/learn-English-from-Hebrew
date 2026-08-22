@@ -41,6 +41,15 @@ export const WORDS: readonly WordData[] = [
   w("MAN", "איש", "🧍", 1),
   w("NAP", "שנת צהריים", "😴", 1),
   w("TIP", "קצה", "📍", 1),
+  // PIG and KID exist so that G and K have something to spend on in their own
+  // lessons — they are the only two letters in the teaching order that reach
+  // their lesson with no buildable word containing them. See spendWordFor.
+  w("PIG", "חזיר", "🐷", 1),
+  // With s-a-t-p taught, TAP is the very first word that can be spelled at
+  // all — it is what lets the fourth letter lesson end on a word instead of
+  // on a promise.
+  w("TAP", "ברז", "🚰", 1),
+  w("KID", "ילד", "🧒", 1),
 
   /* Tier 2 — + g o c k e u r h b f ------------------------------- */
   w("DOG", "כלב", "🐶", 2),
@@ -52,6 +61,10 @@ export const WORDS: readonly WordData[] = [
   w("HAT", "כובע", "🎩", 2),
   w("BED", "מיטה", "🛏️", 2),
   w("CAR", "מכונית", "🚗", 2),
+  // V spells almost nothing a child knows. Without VAN the letter V is the
+  // one letter in the alphabet whose lesson cannot end on a word, which is
+  // exactly the vacuum the track is built to avoid.
+  w("VAN", "טנדר", "🚐", 2),
   w("EGG", "ביצה", "🥚", 2),
   w("DUCK", "ברווז", "🦆", 2),
   w("BOOK", "ספר", "📚", 2),
@@ -81,6 +94,51 @@ export const WORDS: readonly WordData[] = [
   w("JUMP", "לקפוץ", "🦘", 3),
   w("MILK", "חלב", "🥛", 3),
   w("BIRD", "ציפור", "🐦", 3),
+
+  /* Tier 3 continued — the typing phase ---------------------------
+   *
+   * Levels 51–100 are volume: the alphabet is finished, and what a child
+   * needs from then on is more real words under their fingers. These exist
+   * for that. They obey the same two rules as everything above — a
+   * seven-year-old can picture every one of them, and the Hebrew gloss is
+   * the word an Israeli child actually says — and they are deliberately
+   * longer on average, because the point of the word phase is that the jobs
+   * get bigger.
+   */
+  w("SNAKE", "נחש", "🐍", 3),
+  w("HORSE", "סוס", "🐴", 3),
+  w("SHEEP", "כבשה", "🐑", 3),
+  w("MOUSE", "עכבר", "🐭", 3),
+  w("BEAR", "דוב", "🐻", 3),
+  w("MONKEY", "קוף", "🐒", 3),
+  w("ELEPHANT", "פיל", "🐘", 3),
+  w("BUTTERFLY", "פרפר", "🦋", 3),
+  w("FLOWER", "פרח", "🌸", 3),
+  w("CLOUD", "ענן", "☁️", 3),
+  w("SNOW", "שלג", "❄️", 3),
+  w("BEACH", "חוף", "🏖️", 3),
+  w("CHAIR", "כיסא", "🪑", 3),
+  w("TABLE", "שולחן", "🍽️", 3),
+  w("WINDOW", "חלון", "🪟", 3),
+  w("CLOCK", "שעון", "🕐", 3),
+  w("PHONE", "טלפון", "📱", 3),
+  w("SHOES", "נעליים", "👟", 3),
+  w("SHIRT", "חולצה", "👕", 3),
+  w("BREAD", "לחם", "🍞", 3),
+  w("CHEESE", "גבינה", "🧀", 3),
+  w("BANANA", "בננה", "🍌", 3),
+  w("COOKIE", "עוגייה", "🍪", 3),
+  w("CANDY", "סוכרייה", "🍬", 3),
+  w("JUICE", "מיץ", "🧃", 3),
+  w("TRAIN", "רכבת", "🚂", 3),
+  w("PLANE", "מטוס", "✈️", 3),
+  w("BOAT", "סירה", "⛵", 3),
+  w("BIKE", "אופניים", "🚲", 3),
+  w("BALLOON", "בלון", "🎈", 3),
+  w("MUSIC", "מוזיקה", "🎵", 3),
+  w("TEACHER", "מורה", "🧑‍🏫", 3),
+  w("MOM", "אמא", "👩", 3),
+  w("BABY", "תינוק", "👶", 3),
 ];
 
 const BY_WORD = new Map(WORDS.map((x) => [x.word, x]));
@@ -117,6 +175,52 @@ export function payoffWordFor(letter: string): WordData | undefined {
 }
 
 /**
+ * THE WORD A LETTER LESSON SPENDS.
+ *
+ * `payoffWordFor` only answers for the letters that happen to *unlock* a new
+ * word, which is about three quarters of them — and a letter lesson that ends
+ * without building anything is exactly the vacuum this app is built to avoid.
+ * So: the payoff word when there is one, otherwise the shortest word already
+ * buildable that actually contains the letter, preferring one no earlier
+ * lesson has spent.
+ *
+ * Returns undefined only for a letter that appears in no word at all, which
+ * is a content bug worth seeing rather than papering over.
+ */
+export function spendWordFor(
+  letter: string,
+  alreadyUsed: ReadonlySet<string> = new Set(),
+): WordData | undefined {
+  const up = letter.toUpperCase();
+  const idx = TEACHING_ORDER.indexOf(up);
+  if (idx < 0) return undefined;
+
+  const payoff = payoffWordFor(up);
+  if (payoff && !alreadyUsed.has(payoff.word)) return payoff;
+
+  const taught = TEACHING_ORDER.slice(0, idx + 1);
+  const candidates = buildableWords(taught).filter((word) =>
+    word.requiresLetters.includes(up),
+  );
+  return (
+    candidates.find((word) => !alreadyUsed.has(word.word)) ??
+    payoff ??
+    candidates[0]
+  );
+}
+
+/**
+ * THE WHOLE BANK, EASIEST FIRST — the running order of the word phase.
+ *
+ * Tier, then length, then alphabetically, so the ramp a child feels is real
+ * (three-letter words before nine-letter ones) and the order is identical on
+ * the server and the client, which content in a prerendered track has to be.
+ */
+export const WORDS_BY_DIFFICULTY: readonly WordData[] = [...WORDS].sort(
+  (a, b) => a.tier - b.tier || a.word.length - b.word.length || a.word.localeCompare(b.word),
+);
+
+/**
  * THE WORDS PRONUNCIATION PRACTICE IS ALLOWED TO ASK FOR.
  *
  * The word bank plus every letter's example word — the same union the voice
@@ -126,6 +230,10 @@ export function payoffWordFor(letter: string): WordData | undefined {
  * It exists as a set because /api/voice/check takes a word from the client and
  * must not accept an arbitrary one. That check is what keeps the endpoint a
  * feature of this curriculum rather than an open transcription service.
+ *
+ * The ORDER practice runs in is not here: WORDS_BY_DIFFICULTY above is
+ * already the bank easiest-first, and the speaking screen should walk the
+ * same ramp the word phase does rather than invent a second one.
  */
 const PRACTICE_WORDS: ReadonlySet<string> = new Set([
   ...WORDS.map((w) => w.word.toUpperCase()),
@@ -134,11 +242,4 @@ const PRACTICE_WORDS: ReadonlySet<string> = new Set([
 
 export function isPracticeWord(word: string): boolean {
   return PRACTICE_WORDS.has(word.toUpperCase());
-}
-
-/** The practice list, in teaching order, so the easiest words come first. */
-export function practiceWords(): WordData[] {
-  return [...WORDS].sort(
-    (a, b) => a.tier - b.tier || unlockIndex(a) - unlockIndex(b) || a.word.length - b.word.length,
-  );
 }
