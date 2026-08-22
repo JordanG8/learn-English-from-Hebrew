@@ -62,6 +62,22 @@ const C = {
   grassLight: 0x95cc68,
   dirt: 0xd2a86f,
   dirtEdge: 0xc09a68,
+  // The brick road. Warm, reddish masonry — chosen so a cool light-blue
+  // number sits on the opposite side of the colour wheel from everything
+  // under it, and cannot be lost against the road or the pedestal.
+  brick: 0xa8604a,
+  brickDark: 0x8c4b39,
+  brickLight: 0xc17c5d,
+  brickPale: 0xb8705a,
+  mortar: 0x6b5a4d,
+  kerb: 0xd7c4a2,
+  kerbDark: 0xb29a78,
+  plinth: 0xcbb190,
+  plinthDark: 0xa88f6d,
+  // The cap is the ONE dark surface in a warm, bright scene, because it is the
+  // one that has to carry a light-blue number. Sandstone under light blue is a
+  // pastel on a pastel; near-black under it is a road sign.
+  padCap: 0x3c3540,
   stone: 0xbfc4c9,
   stoneDark: 0x9aa1a8,
   trunk: 0x8a6444,
@@ -133,20 +149,37 @@ function nodePosition(i: number): THREE.Vector3 {
 
 const labelCache = new Map<string, THREE.CanvasTexture>();
 
-function labelTexture(text: string, color: string): THREE.CanvasTexture {
-  const key = `${text}|${color}`;
+function labelTexture(
+  text: string,
+  color: string,
+  outline?: string,
+): THREE.CanvasTexture {
+  const key = `${text}|${color}|${outline ?? ""}`;
   const hit = labelCache.get(key);
   if (hit) return hit;
-  const s = 128;
+  const s = 256; // the digits sit on a lit stone cap now; 128 read as mush
   const cv = document.createElement("canvas");
   cv.width = cv.height = s;
   const g = cv.getContext("2d")!;
   g.clearRect(0, 0, s, s);
-  g.fillStyle = color;
-  g.font = `800 ${text.length > 2 ? 52 : 68}px system-ui, sans-serif`;
+  g.font = `800 ${text.length > 2 ? 132 : 174}px system-ui, sans-serif`;
   g.textAlign = "center";
   g.textBaseline = "middle";
-  g.fillText(text, s / 2, s / 2 + 4);
+  /*
+   * A dark outline is what makes ONE number colour work everywhere. Light
+   * blue against warm sandstone is already loud; against the green "next"
+   * cap it would be merely different. The ring of near-black around every
+   * glyph means the digit is legible on any cap we ever paint.
+   */
+  if (outline) {
+    g.strokeStyle = outline;
+    g.lineWidth = 14;
+    g.lineJoin = "round";
+    g.miterLimit = 2;
+    g.strokeText(text, s / 2, s / 2 + 8);
+  }
+  g.fillStyle = color;
+  g.fillText(text, s / 2, s / 2 + 8);
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
@@ -355,41 +388,183 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   scene.add(groundMesh);
 
   /* --- the road ------------------------------------------------------ */
-  function buildRoad(count: number): THREE.Mesh {
+  /*
+   * A LAID BRICK ROAD, not a painted stripe.
+   *
+   * The old road was one flat ribbon of dirt-coloured triangles. Seen down an
+   * isometric camera that reads as a decal on the grass — there is no edge to
+   * catch the sun, so the road has no thickness and the pads look dropped on
+   * top of a drawing. This builds it the way a real one is built:
+   *
+   *   · a mortar bed, the old ribbon, kept as the dark gap between bricks;
+   *   · courses of individual bricks laid across the road in running bond,
+   *     each one a box with a real top face, a real side, and its own tint;
+   *   · a raised kerb of larger stones down both edges, which is what
+   *     actually reads as "the road is a thing standing above the field".
+   *
+   * COST. Three InstancedMesh draw calls for the entire track, whatever its
+   * length — the same budget as the two ribbons it replaces. Per-instance
+   * colour does the variation, so there is still not one texture to load.
+   */
+  const ROAD_HALF = 2.3;
+
+  /** Y of the brick surface at (x, z) — pads and props sit relative to this. */
+  function roadSurface(x: number, z: number): number {
+    return terrainHeight(x, z) + 0.06;
+  }
+
+  function buildRoad(count: number): THREE.Group {
+    const group = new THREE.Group();
     const pts: THREE.Vector3[] = [];
     for (let i = -2; i < count + 3; i++) pts.push(nodePosition(i));
     const curve = new THREE.CatmullRomCurve3(pts, false, "catmullrom", 0.4);
-    const steps = pts.length * 8;
-    const verts: number[] = [];
-    const uvs: number[] = [];
-    const idx: number[] = [];
+    // The default 200-segment arc table is ~2 world units per entry over a
+    // track this long, which is coarser than a brick — courses would bunch on
+    // the bends. One entry per third of a brick keeps the spacing honest.
+    curve.arcLengthDivisions = pts.length * 40;
+    const length = curve.getLength();
     const up = new THREE.Vector3(0, 1, 0);
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const p = curve.getPoint(t);
-      const tan = curve.getTangent(t);
-      const side = new THREE.Vector3().crossVectors(tan, up).normalize();
-      // A road that breathes: the width wobbles slightly so it reads as worn
-      // earth rather than an extruded rectangle.
-      const w = 2.1 + Math.sin(t * 40) * 0.16;
-      const l = p.clone().addScaledVector(side, -w);
-      const r = p.clone().addScaledVector(side, w);
-      verts.push(l.x, terrainHeight(l.x, l.z) + 0.06, l.z);
-      verts.push(r.x, terrainHeight(r.x, r.z) + 0.06, r.z);
-      uvs.push(0, t * 20, 1, t * 20);
-      if (i < steps) {
-        const a = i * 2;
-        idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+
+    /* --- the mortar bed: the old ribbon, darkened and sunk ------------- */
+    {
+      const steps = pts.length * 8;
+      const verts: number[] = [];
+      const idx: number[] = [];
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const p = curve.getPoint(t);
+        const tan = curve.getTangent(t);
+        const side = new THREE.Vector3().crossVectors(tan, up).normalize();
+        // Slightly wider than the brick field, so no course ever overhangs
+        // into bare grass on a bend.
+        const w = ROAD_HALF + 0.34;
+        const l = p.clone().addScaledVector(side, -w);
+        const r = p.clone().addScaledVector(side, w);
+        verts.push(l.x, terrainHeight(l.x, l.z) + 0.05, l.z);
+        verts.push(r.x, terrainHeight(r.x, r.z) + 0.05, r.z);
+        if (i < steps) {
+          const a = i * 2;
+          idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+        }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+      g.setIndex(idx);
+      g.computeVertexNormals();
+      const bed = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: C.mortar }));
+      bed.receiveShadow = !opts.reducedMotion;
+      group.add(bed);
+    }
+
+    /* --- the bricks ---------------------------------------------------- */
+    const BRICK_L = 0.62; // along the road
+    const BRICK_W = 0.9; // across it
+    const BRICK_H = 0.24;
+    const COURSE = BRICK_L + 0.07; // the mortar joint between courses
+    const courses = Math.max(1, Math.floor(length / COURSE));
+    const cols = Math.floor((ROAD_HALF * 2) / BRICK_W);
+
+    const dummy = new THREE.Object3D();
+    const brickTints = [C.brick, C.brickDark, C.brickLight, C.brickPale].map(
+      (c) => new THREE.Color(c),
+    );
+    const tint = new THREE.Color();
+
+    const bricks = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(BRICK_W - 0.09, BRICK_H, BRICK_L - 0.07),
+      new THREE.MeshLambertMaterial({ flatShading: true }),
+      courses * cols,
+    );
+    let laid = 0;
+    const p = new THREE.Vector3();
+    const tan = new THREE.Vector3();
+    const side = new THREE.Vector3();
+    for (let r = 0; r < courses; r++) {
+      const u = (r * COURSE) / length;
+      curve.getPointAt(Math.min(u, 1), p);
+      curve.getTangentAt(Math.min(u, 1), tan);
+      side.crossVectors(tan, up).normalize();
+      const yaw = Math.atan2(tan.x, tan.z);
+      // Running bond: every other course is offset half a brick, which is what
+      // stops the road reading as graph paper.
+      const stagger = r % 2 ? BRICK_W * 0.5 : 0;
+      for (let c = 0; c < cols; c++) {
+        const off = (c - (cols - 1) / 2) * BRICK_W + stagger;
+        if (Math.abs(off) + BRICK_W * 0.5 > ROAD_HALF) continue;
+        const jx = (rnd() - 0.5) * 0.05;
+        const x = p.x + side.x * (off + jx);
+        const z = p.z + side.z * (off + jx);
+        dummy.position.set(x, roadSurface(x, z) + BRICK_H * 0.5, z);
+        // Hand-laid, not machined: a hair of yaw and lean on every brick, and
+        // a little settle, so the surface catches the sun unevenly.
+        dummy.rotation.set(
+          (rnd() - 0.5) * 0.05,
+          yaw + (rnd() - 0.5) * 0.05,
+          (rnd() - 0.5) * 0.05,
+        );
+        dummy.scale.set(1, 0.8 + rnd() * 0.45, 1);
+        dummy.updateMatrix();
+        bricks.setMatrixAt(laid, dummy.matrix);
+        tint.copy(brickTints[Math.floor(rnd() * brickTints.length)]);
+        const shade = 0.9 + rnd() * 0.2;
+        tint.multiplyScalar(shade);
+        bricks.setColorAt(laid, tint);
+        laid++;
       }
     }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
-    g.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-    g.setIndex(idx);
-    g.computeVertexNormals();
-    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: C.dirt }));
-    m.receiveShadow = !opts.reducedMotion;
-    return m;
+    bricks.count = laid;
+    bricks.instanceMatrix.needsUpdate = true;
+    if (bricks.instanceColor) bricks.instanceColor.needsUpdate = true;
+    bricks.castShadow = !opts.reducedMotion;
+    bricks.receiveShadow = !opts.reducedMotion;
+    bricks.frustumCulled = false;
+    group.add(bricks);
+
+    /* --- the kerb ------------------------------------------------------ */
+    /*
+     * The single most valuable centimetre in the whole scene: a raised stone
+     * lip down both verges. It gives the road a lit top edge and a shadowed
+     * face, so it stands up off the field, AND it is a clean hard boundary —
+     * which is what lets the verges beyond it be empty without looking unfinished.
+     */
+    const KERB_STEP = 0.86;
+    const kerbCount = Math.max(1, Math.floor(length / KERB_STEP)) * 2;
+    const kerb = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(0.44, 0.42, KERB_STEP - 0.06),
+      new THREE.MeshLambertMaterial({ flatShading: true }),
+      kerbCount,
+    );
+    const kerbTints = [C.kerb, C.kerbDark].map((c) => new THREE.Color(c));
+    let set = 0;
+    for (let i = 0; i * KERB_STEP < length && set + 1 < kerbCount; i++) {
+      const u = (i * KERB_STEP) / length;
+      curve.getPointAt(Math.min(u, 1), p);
+      curve.getTangentAt(Math.min(u, 1), tan);
+      side.crossVectors(tan, up).normalize();
+      const yaw = Math.atan2(tan.x, tan.z);
+      for (const sgn of [-1, 1]) {
+        const off = sgn * (ROAD_HALF + 0.28);
+        const x = p.x + side.x * off;
+        const z = p.z + side.z * off;
+        dummy.position.set(x, roadSurface(x, z) + 0.1, z);
+        dummy.rotation.set(0, yaw + (rnd() - 0.5) * 0.03, (rnd() - 0.5) * 0.03);
+        dummy.scale.set(1, 0.85 + rnd() * 0.3, 1);
+        dummy.updateMatrix();
+        kerb.setMatrixAt(set, dummy.matrix);
+        tint.copy(kerbTints[i % 2]).multiplyScalar(0.94 + rnd() * 0.12);
+        kerb.setColorAt(set, tint);
+        set++;
+      }
+    }
+    kerb.count = set;
+    kerb.instanceMatrix.needsUpdate = true;
+    if (kerb.instanceColor) kerb.instanceColor.needsUpdate = true;
+    kerb.castShadow = !opts.reducedMotion;
+    kerb.receiveShadow = !opts.reducedMotion;
+    kerb.frustumCulled = false;
+    group.add(kerb);
+
+    return group;
   }
 
   /* --- scenery ------------------------------------------------------- */
@@ -716,16 +891,60 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   const padGroup = new THREE.Group();
   scene.add(padGroup);
 
-  const padGeo = new THREE.CylinderGeometry(1.55, 1.75, 0.5, 8);
-  const stumpGeo = new THREE.CylinderGeometry(1.35, 1.5, 1.1, 8);
-  const ringGeo = new THREE.TorusGeometry(1.85, 0.12, 6, 20);
+  /*
+   * A LEVEL IS A PEDESTAL.
+   *
+   * Not a stump in the grass — a built thing: two stone steps, a brick shaft
+   * of the same masonry as the road, a cornice that oversails it, and a cap
+   * the number is cut into. Height is the point. A pedestal stands the number
+   * a metre and a half clear of the brick around it, so at map distance the
+   * eye finds a row of monuments rather than a row of coins, and the pencil
+   * on top is unmistakably standing ON something.
+   *
+   * The numbers below stack: each layer's centre is the previous layer's top
+   * plus half its own height, and PAD_TOP is where that stack ends. Everything
+   * that has to sit on a level — the pencil, the ring, the stars, the
+   * shockwave — is measured from PAD_TOP, so the pedestal can be re-proportioned
+   * in one place without anything floating or sinking.
+   */
+  /*
+   * PROPORTION. The first pass made these as wide as the road, and a pedestal
+   * wider than its road is a table: it hid the brick, overhung the kerb, and
+   * from an isometric camera read as a mushroom. Narrow and tall is the whole
+   * trick — the base tucks inside the kerb line (ROAD_HALF is 2.3), the shaft
+   * is slim enough to see brick either side of it, and the extra height is
+   * what carries the number clear of everything.
+   */
+  const stepAGeo = new THREE.CylinderGeometry(1.5, 1.74, 0.36, 8);
+  const stepBGeo = new THREE.CylinderGeometry(1.28, 1.46, 0.3, 8);
+  const shaftGeo = new THREE.CylinderGeometry(0.98, 1.16, 1.7, 8);
+  const corniceGeo = new THREE.CylinderGeometry(1.34, 1.02, 0.3, 8);
+  const padGeo = new THREE.CylinderGeometry(1.26, 1.36, 0.26, 8);
+  const STEP_A_Y = 0.18;
+  const STEP_B_Y = 0.51;
+  const SHAFT_Y = 1.51;
+  const CORNICE_Y = 2.51;
+  const CROWN_Y = 2.79; // centre of the cap; the crown group bobs from here
+  const PAD_TOP = 2.92; // the surface a pencil stands on
+  const ringGeo = new THREE.TorusGeometry(1.55, 0.11, 6, 20);
   /*
    * TAP TARGET. A pad is about 40 physical pixels across on a phone, and a
    * fingertip is nearer 45 — so an accurate tap on the number still missed.
    * Every pad carries an invisible column, roughly twice as wide, and that is
    * what the raycaster actually hits. Nothing about the picture changes.
    */
-  const hitGeo = new THREE.CylinderGeometry(3.1, 3.1, 7, 6);
+  const hitGeo = new THREE.CylinderGeometry(3.1, 3.1, 9, 6);
+
+  /** Geometry every pad shares, and which therefore outlives any one pad. */
+  const SHARED_PAD_GEO: ReadonlySet<THREE.BufferGeometry> = new Set([
+    stepAGeo,
+    stepBGeo,
+    shaftGeo,
+    corniceGeo,
+    padGeo,
+    ringGeo,
+    hitGeo,
+  ]);
 
   interface Pad {
     group: THREE.Group;
@@ -733,7 +952,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     node: LevelNode;
     signature: string;
     ring: THREE.Mesh | null;
-    top: THREE.Mesh;
+    /** The cap + number + stars, as one bobbing group. */
+    top: THREE.Object3D;
   }
   let pads: Pad[] = [];
   const padMap = new Map<number, Pad>();
@@ -752,26 +972,56 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     const wob = mulberry(index * 2654435761)();
     g.scale.setScalar(0.94 + wob * 0.12);
 
-    const stumpMat = new THREE.MeshLambertMaterial({
-      color: node.unlocked ? C.woodDark : C.padLocked,
+    const stoneMat = new THREE.MeshLambertMaterial({
+      color: node.unlocked ? C.plinth : C.padLocked,
+      flatShading: true,
     });
-    const topMat = new THREE.MeshLambertMaterial({
-      color: node.isNext ? C.next : node.unlocked ? C.wood : C.padLocked,
+    const stoneDarkMat = new THREE.MeshLambertMaterial({
+      color: node.unlocked ? C.plinthDark : C.padLocked,
+      flatShading: true,
+    });
+    const shaftMat = new THREE.MeshLambertMaterial({
+      // The shaft is the road's own brick, so a level reads as grown out of
+      // the road rather than parked beside it.
+      color: node.unlocked ? C.brick : C.padLocked,
+      flatShading: true,
+    });
+    const capMat = new THREE.MeshLambertMaterial({
+      color: node.isNext ? C.next : node.unlocked ? C.padCap : C.padLocked,
+      flatShading: true,
     });
 
-    const stump = new THREE.Mesh(stumpGeo, stumpMat);
-    stump.rotation.y = wob * Math.PI * 2;
-    stump.position.y = 0.55;
-    stump.castShadow = !opts.reducedMotion;
-    stump.receiveShadow = !opts.reducedMotion;
-    g.add(stump);
+    const turn = wob * Math.PI * 2;
+    // Steps and shaft share one yaw; the cornice is turned half a facet off it,
+    // which is the small thing that makes an eight-sided stack look carved.
+    for (const [geo, y, mat, spin] of [
+      [stepAGeo, STEP_A_Y, stoneDarkMat, turn],
+      [stepBGeo, STEP_B_Y, stoneMat, turn],
+      [shaftGeo, SHAFT_Y, shaftMat, turn],
+      [corniceGeo, CORNICE_Y, stoneMat, turn + Math.PI / 8],
+    ] as [THREE.CylinderGeometry, number, THREE.Material, number][]) {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.y = y;
+      m.rotation.y = spin;
+      m.castShadow = !opts.reducedMotion;
+      m.receiveShadow = !opts.reducedMotion;
+      g.add(m);
+    }
 
-    const top = new THREE.Mesh(padGeo, topMat);
-    top.rotation.y = wob * Math.PI * 2;
-    top.position.y = 1.3;
-    top.castShadow = !opts.reducedMotion;
-    top.receiveShadow = !opts.reducedMotion;
+    /*
+     * The crown — cap, number and stars — is one group because they move as
+     * one. The next level's cap breathes; if the digits stayed put while the
+     * stone under them rose, the number would look printed on the air.
+     */
+    const top = new THREE.Group();
+    top.position.y = CROWN_Y;
     g.add(top);
+
+    const cap = new THREE.Mesh(padGeo, capMat);
+    cap.rotation.y = turn + Math.PI / 8;
+    cap.castShadow = !opts.reducedMotion;
+    cap.receiveShadow = !opts.reducedMotion;
+    top.add(cap);
 
     /*
      * A locked pad gets a lock and NOTHING else — no title, no requirement,
@@ -779,11 +1029,19 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
      * unlocked pad gets its number, and the chat pad gets its glyph.
      */
     const face = node.isChat ? "💬" : node.unlocked ? node.label : "🔒";
-    const faceColor = node.isNext ? "#ffffff" : node.unlocked ? "#5a3a17" : "#eef1f4";
+    /*
+     * ONE COLOUR FOR EVERY NUMBER, and it is nothing else in the scene.
+     * The road, the shaft and the cap are all warm masonry; a cool light blue
+     * is the far side of the wheel from all of it, so the digits separate from
+     * their own pedestal at any distance and in any light. The near-black
+     * outline (see labelTexture) carries it over the green "next" cap too.
+     */
+    const faceColor = node.unlocked ? "#7fe6ff" : "#eef1f4";
+    const faceOutline = node.unlocked ? "#0a2f43" : undefined;
     const decal = new THREE.Mesh(
       new THREE.PlaneGeometry(1.9, 1.9),
       new THREE.MeshBasicMaterial({
-        map: labelTexture(face, faceColor),
+        map: labelTexture(face, faceColor, faceOutline),
         transparent: true,
         depthWrite: false,
       }),
@@ -792,8 +1050,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     // the plane's text-up ends on FWD, which is straight up the screen.
     decal.rotation.order = "YXZ";
     decal.rotation.set(-Math.PI / 2, Math.PI / 4, 0);
-    decal.position.y = 1.56;
-    g.add(decal);
+    decal.position.y = PAD_TOP - CROWN_Y + 0.01;
+    top.add(decal);
 
     /*
      * "You are going HERE." A ground ring alone is lost among the pads at this
@@ -808,7 +1066,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
         new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 }),
       );
       ring.rotation.x = -Math.PI / 2;
-      ring.position.y = 1.62;
+      ring.position.y = PAD_TOP + 0.07;
       g.add(ring);
 
       const chevron = new THREE.Shape();
@@ -831,7 +1089,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
        * pointed at the wrong one. At four it stays over the pad it means —
        * which matters more now that a phone zooms in on all this.
        */
-      mark.position.y = 4.4;
+      mark.position.y = PAD_TOP + 2.9;
       mark.scale.setScalar(1.5);
       mark.name = "chevron";
       mark.castShadow = false;
@@ -842,13 +1100,13 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     if (node.done) {
       for (let i = 0; i < 3; i++) {
         const s = new THREE.Mesh(
-          new THREE.CircleGeometry(0.16, 5),
+          new THREE.CircleGeometry(0.14, 5),
           new THREE.MeshBasicMaterial({ color: 0xf2c14b }),
         );
         s.rotation.order = "YXZ";
         s.rotation.set(-Math.PI / 2, Math.PI / 4, 0);
-        s.position.set((i - 1) * 0.45, 1.57, 1.05);
-        g.add(s);
+        s.position.set((i - 1) * 0.36, PAD_TOP - CROWN_Y + 0.02, 0.8);
+        top.add(s);
       }
     }
 
@@ -856,7 +1114,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       hitGeo,
       new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }),
     );
-    hit.position.y = 3;
+    hit.position.y = 4;
     hit.renderOrder = -1;
     hit.name = "hit";
     g.add(hit);
@@ -977,7 +1235,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       const st = sparkState[i];
       const a = rnd() * Math.PI * 2;
       const speed = 3 + rnd() * 6;
-      st.p.set(at.x, at.y + 1.7, at.z);
+      st.p.set(at.x, at.y + PAD_TOP + 0.15, at.z);
       st.v.set(Math.cos(a) * speed, up * (0.45 + rnd()), Math.sin(a) * speed);
       st.life = 0.5 + rnd() * 0.45;
       st.spin = (rnd() - 0.5) * 11;
@@ -1036,7 +1294,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
    */
   let advancing: { from: number; to: number; t: number; phase: number; still: boolean } | null =
     null;
-  let road: THREE.Mesh | null = null;
+  let road: THREE.Group | null = null;
   let built = false;
   let disposed = false;
 
@@ -1048,14 +1306,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   function disposePad(p: Pad) {
     p.group.traverse((o) => {
       if (o instanceof THREE.Mesh) {
-        if (
-          o.geometry !== padGeo &&
-          o.geometry !== stumpGeo &&
-          o.geometry !== ringGeo &&
-          o.geometry !== hitGeo
-        ) {
-          o.geometry.dispose();
-        }
+        if (!SHARED_PAD_GEO.has(o.geometry)) o.geometry.dispose();
         const m = o.material as THREE.Material | THREE.Material[];
         if (Array.isArray(m)) m.forEach((x) => x.dispose());
         else m.dispose();
@@ -1137,12 +1388,28 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       scenery.add(h);
     }
 
-    // Trees along both verges, thinning near the road so pads stay readable.
+    /*
+     * A CLEAR VERGE.
+     *
+     * Everything used to crowd the kerb: trees from 5.5 units out, three
+     * clumps of bush-rock-flowers per level from 2.8 — which is inside the
+     * pedestal's own footprint — plus a line of loose boundary pebbles. The
+     * result was a tunnel of noise the eye had to fight through to find the
+     * number it came for, and the road's edge was lost in it.
+     *
+     * Nothing is deleted from the world; it is moved OUT of it. VERGE_CLEAR
+     * is the band either side of the kerb that stays mown grass and nothing
+     * else, and every scatter below starts beyond it. The road now has room
+     * to be looked at.
+     */
+    const VERGE_CLEAR = ROAD_HALF + 6.2;
+
+    // Trees stand back from the verge, so the road keeps a clean silhouette.
     for (let i = -2; i < extent; i++) {
       const base = nodePosition(i);
       for (const side of [-1, 1]) {
-        if (rnd() < 0.16) continue;
-        const off = (5.5 + rnd() * 13) * side;
+        if (rnd() < 0.3) continue;
+        const off = (VERGE_CLEAR + 1.5 + rnd() * 12) * side;
         const jitter = (rnd() - 0.5) * SPACING;
         const x = base.x + SIDE.x * off + FWD.x * jitter;
         const z = base.z + SIDE.z * off + FWD.z * jitter;
@@ -1150,9 +1417,10 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
         scenery.add(t);
         swayers.push({ g: t, phase: rnd() * Math.PI * 2, amp: 0.02 + rnd() * 0.03 });
       }
-      // Cover close to the verge, where trees are kept clear of the pads.
-      for (let k = 0; k < 3; k++) {
-        const off = (2.8 + rnd() * 6) * (rnd() < 0.5 ? -1 : 1);
+      // One clump per level at most, and never inside the clear band: cover
+      // is there to break up the middle distance, not to fringe the kerb.
+      if (rnd() < 0.55) {
+        const off = (VERGE_CLEAR + rnd() * 9) * (rnd() < 0.5 ? -1 : 1);
         const jit = (rnd() - 0.5) * SPACING;
         scenery.add(
           undergrowth(base.x + SIDE.x * off + FWD.x * jit, base.z + SIDE.z * off + FWD.z * jit),
@@ -1165,7 +1433,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
      * not. They catch the sun at different angles and remove the last broad,
      * empty patches of "green floor" without adding draw calls per blade.
      */
-    const grassCount = Math.min(720, extent * 13);
+    const grassCount = Math.min(560, extent * 10);
     const tuftGeo = new THREE.ConeGeometry(0.12, 0.72, 3);
     tuftGeo.translate(0, 0.36, 0);
     const tufts = new THREE.InstancedMesh(
@@ -1181,7 +1449,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       const at = Math.floor(rnd() * extent);
       const base = nodePosition(at);
       const side = rnd() < 0.5 ? -1 : 1;
-      const off = side * (4.3 + rnd() * 22);
+      const off = side * (VERGE_CLEAR - 2.4 + rnd() * 24);
       const along = (rnd() - 0.5) * SPACING;
       const x = base.x + SIDE.x * off + FWD.x * along;
       const z = base.z + SIDE.z * off + FWD.z * along;
@@ -1198,31 +1466,12 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     tufts.frustumCulled = false;
     scenery.add(tufts);
 
-    /* Small boundary stones make the worn road feel pressed into the meadow. */
-    const edgingCount = extent * 5;
-    const edging = new THREE.InstancedMesh(
-      new THREE.DodecahedronGeometry(0.22, 0),
-      new THREE.MeshLambertMaterial({ color: 0xb8aa8d, flatShading: true }),
-      edgingCount,
-    );
-    for (let i = 0; i < edgingCount; i++) {
-      const at = (i / edgingCount) * extent;
-      const base = nodePosition(at);
-      const side = i % 2 === 0 ? -1 : 1;
-      const along = (rnd() - 0.5) * 1.5;
-      const x = base.x + SIDE.x * side * (2.28 + rnd() * 0.32) + FWD.x * along;
-      const z = base.z + SIDE.z * side * (2.28 + rnd() * 0.32) + FWD.z * along;
-      dummy.position.set(x, terrainHeight(x, z) + 0.08, z);
-      dummy.rotation.set(rnd(), rnd(), rnd());
-      const s = 0.45 + rnd() * 0.75;
-      dummy.scale.set(s, 0.6 * s, s);
-      dummy.updateMatrix();
-      edging.setMatrixAt(i, dummy.matrix);
-    }
-    edging.instanceMatrix.needsUpdate = true;
-    edging.castShadow = !opts.reducedMotion;
-    edging.receiveShadow = !opts.reducedMotion;
-    scenery.add(edging);
+    /*
+     * The loose boundary pebbles that used to run down both verges are gone.
+     * They were doing the kerb's job badly — a scatter of grey lumps reads as
+     * litter at this camera angle, where a laid stone lip reads as a road.
+     * See `buildRoad`, which now lays that lip properly.
+     */
 
     /*
      * The alphabet ruins are the landmark that makes the road somewhere rather
@@ -1235,7 +1484,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       const side = n % 2 === 0 ? -1 : 1;
       const anchor = nodePosition(at);
       const r = ruin();
-      r.position.set(anchor.x + SIDE.x * 17 * side, 0, anchor.z + SIDE.z * 17 * side);
+      r.position.set(anchor.x + SIDE.x * 21 * side, 0, anchor.z + SIDE.z * 21 * side);
       r.rotation.y = Math.PI * 0.25 + n * 0.7;
       r.scale.setScalar(1.6 + rnd() * 0.5);
       scenery.add(r);
@@ -1249,8 +1498,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     for (let n = 0, at = 8; at < extent; n++, at += 13) {
       const side = n % 2 === 0 ? 1 : -1;
       const anchor = nodePosition(at);
-      const x = anchor.x + SIDE.x * 14.5 * side;
-      const z = anchor.z + SIDE.z * 14.5 * side;
+      const x = anchor.x + SIDE.x * 17.5 * side;
+      const z = anchor.z + SIDE.z * 17.5 * side;
       const books = bookStack(0xb00c + n * 91);
       books.position.set(x, terrainHeight(x, z), z);
       books.rotation.y = Math.PI * 0.25 + n * 0.8;
@@ -1542,7 +1791,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     const look = advancing
       ? nodePosition(advancing.to + lookAhead * 0.5)
       : nodePosition(shown + lookAhead);
-    camGoal.set(look.x, look.y + 1.2, look.z);
+    camGoal.set(look.x, look.y + 1.9, look.z);
     camTarget.lerp(camGoal, opts.reducedMotion ? 1 : 1 - Math.pow(advancing ? 0.0008 : 0.002, dt));
     panOffset += (panGoal - panOffset) * (opts.reducedMotion ? 1 : Math.min(1, dt * 8));
     if (shake > 0) shake = Math.max(0, shake - dt * 2.2);
@@ -1612,7 +1861,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
         if (advancing.phase < 2) {
           advancing.phase = 2;
           burst(b, 6, SPARK_COUNT);
-          shock.position.set(b.x, b.y + 1.63, b.z);
+          shock.position.set(b.x, b.y + PAD_TOP + 0.08, b.z);
           shock.scale.setScalar(1);
           shock.visible = !opts.reducedMotion;
           shockT = opts.reducedMotion ? -1 : 0;
@@ -1665,7 +1914,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       player.position.set(p.x, p.y + bob, p.z);
       player.rotation.y = opts.reducedMotion ? 0 : Math.sin(t * 0.9) * 0.12;
     }
-    player.position.y += 1.6; // stand on the pad, not in it
+    player.position.y += PAD_TOP + 0.05; // stand on the pad, not in it
 
     // The contact shadow sits on the pad the pencil is over, and shrinks as it
     // leaves the ground — a shadow that stays full size under a pencil nine
@@ -1700,7 +1949,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
           (p.ring.material as THREE.MeshBasicMaterial).opacity = 0.55 + Math.sin(t * 3) * 0.3;
         }
         if (p.node.isNext) {
-          p.top.position.y = 1.3 + Math.sin(t * 2.2) * 0.07;
+          p.top.position.y = CROWN_Y + Math.sin(t * 2.2) * 0.07;
           const mark = p.group.getObjectByName("chevron");
           if (mark) {
             mark.position.y = 4.4 + Math.sin(t * 2.6) * 0.38;
