@@ -128,7 +128,7 @@ features share the one credential:
 | Feature | Model | Endpoint |
 |---|---|---|
 | Conversation mode | `anthropic/claude-sonnet-5` | via the AI SDK |
-| The synthesised voice | `fish-audio/s2.1-pro` | `POST /v4/ai/speech-model` |
+| The synthesised voice | `openai/tts-1-hd`, voice `nova` | `POST /v4/ai/speech-model` |
 | Pronunciation practice (`/speak`) | `fish-audio/transcribe-1` | `POST /v4/ai/transcription-model` |
 
 All three degrade to the behaviour the app had before them if the credential is
@@ -145,9 +145,11 @@ silent and `/speak` says it could not listen, check the balance at
 curl -H "Authorization: Bearer $AI_GATEWAY_API_KEY" https://ai-gateway.vercel.sh/v1/credits
 ```
 
-The Fish models are complimentary through 18 September 2026; appending `-free`
-to a model id (`fish-audio/s2.1-pro-free`) pins the promotional variant, which
-stops serving rather than starting to bill when that ends.
+The Fish transcription model is complimentary through 18 September 2026;
+appending `-free` to a model id (`fish-audio/transcribe-1-free`) pins the
+promotional variant, which stops serving rather than starting to bill when that
+ends. `openai/tts-1-hd` bills at list price — a few cents for the whole
+catalogue, once, because every generated line is cached forever.
 
 ### Optional voice variables
 
@@ -156,8 +158,8 @@ code change.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `VOICE_SYNTH_MODEL` | `fish-audio/s2.1-pro` | Any gateway speech model — `openai/tts-1`, `fish-audio/s2.1-pro-free`… |
-| `VOICE_SYNTH_VOICE` | unset | A Fish voice id. Clone the voice recorded at `/studio` and the generated lines sound like the same person. |
+| `VOICE_SYNTH_MODEL` | `openai/tts-1-hd` | Any gateway speech model — `openai/tts-1`, `fish-audio/s2.1-pro`… Fish performs the line and changes speaker between generations; see docs/voice.md before switching. |
+| `VOICE_SYNTH_VOICE` | `nova` | The speaker. OpenAI: `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`. On a cloning model this is where a voice cloned from `/studio` goes. **Changing it means bumping `DIRECTION_VERSION`**, or cached lines keep the old speaker. |
 | `VOICE_SYNTH_DISABLED` | unset | `1` turns the synthesised tier off; the app falls back to browser TTS. |
 | `VOICE_LISTEN_MODEL` | `fish-audio/transcribe-1` | Any gateway transcription model — `openai/whisper-1`… |
 | `VOICE_LISTEN_DISABLED` | unset | `1` turns `/speak`'s checking off. |

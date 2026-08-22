@@ -161,13 +161,13 @@ each take back the moment it ends.
 
 ## The three voices
 
-Since the Fish Audio models landed on the AI Gateway, a line the app wants to
+Since the speech models landed on the AI Gateway, a line the app wants to
 say has three possible sources, and it always takes the best one available:
 
 | | Voice | Where it comes from | When it is used |
 |---|---|---|---|
 | 1 | **A person** | `/studio`, stored in Blob or `public/voice/` | Whenever a recording exists. Always wins. |
-| 2 | **A speech model** | `fish-audio/s2.1-pro` through the AI Gateway, cached as mp3 | A line nobody has recorded |
+| 2 | **A speech model** | `openai/tts-1-hd`, voice `nova`, through the AI Gateway, cached as mp3 | A line nobody has recorded |
 | 3 | **The browser** | `speechSynthesis`, English only | Neither of the above |
 
 Tier 1 covers everything a human has recorded, which is every letter, every
@@ -183,7 +183,7 @@ It also earns its place at three quieter moments:
   the moment it exists, in a real voice, instead of waiting for a recording
   session — which is exactly the state the sentence phase shipped in.
 - **Hebrew.** Hebrew lines have no browser fallback on purpose (see above), so
-  an unrecorded card would be silent rather than robotic. Fish's S2 line is
+  an unrecorded card would be silent rather than robotic. The speech model is
   multilingual, so tier 2 covers Hebrew as well as English.
 - **In the studio.** Every line now has a **🎧 קול AI** button next to
   **▶️ ההקלטה שלי**, so the person recording can hear the model's reading of
@@ -219,8 +219,34 @@ keeps containing only takes a person made.
 
 Generation happens once per line, on first play, and is then served from the
 store and the CDN with a one-year cache. The whole catalogue is a few thousand
-characters — cents at list price, and the Fish models are complimentary on the
-gateway through 18 September 2026.
+characters — cents at list price.
+
+### Why this model, and why the voice is pinned
+
+Tier 2 was `fish-audio/s2.1-pro`, picked because it is multilingual and takes
+an `instructions` string. It failed at the thing that matters more than
+either: **sounding the same twice.** Fish's expressive line performs the line
+it is given — it lilts, it half-sings a short sentence — and with no voice id
+pinned it picks a different speaker per generation. A child who hears `cat` in
+one voice and `the cat is big` in another, one of them sung, cannot use either
+as a model of how English sounds.
+
+`openai/tts-1-hd` is chosen for the opposite properties. Six fixed, named
+voices, so pinning one (`nova`, the least announcer-like) makes **every**
+generated line in the app the same speaker — across letters, words, sentences
+and Hebrew cards. It reads plainly, with no performance, which is what a
+pronunciation model should do. It honours `speed`, which is how the four
+groups stay differently paced.
+
+The price is `instructions`: steering is a `gpt-4o-mini-tts` feature and the
+gateway's speech catalogue does not carry that model. The direction is still
+written for every group and still sent to any model that can act on it — see
+`supportsInstructions` in `lib/voice/synth.ts` — so a steerable model is one
+environment variable away, and a model that silently ignores direction never
+looks like one that is following it.
+
+Changing either the model or the voice means bumping `DIRECTION_VERSION`, or
+half the catalogue keeps serving yesterday's speaker from the cache.
 
 ### When it is not available
 
@@ -280,7 +306,7 @@ lib/voice/store.ts      server: blob or filesystem, one API (+ the synth cache)
 lib/voice/guard.ts      who may write
 lib/voice/client.ts     the studio's side of the wire
 lib/voice/gateway.ts    server: the AI Gateway credential and headers, once
-lib/voice/synth.ts      server: speaking  — text  -> mp3  (fish-audio/s2.1-pro)
+lib/voice/synth.ts      server: speaking  — text  -> mp3  (openai/tts-1-hd)
 lib/voice/listen.ts     server: listening — audio -> text (fish-audio/transcribe-1)
 lib/voice/pronounce.ts  pure: is what we heard the word we asked for?
 lib/audio.ts            playLine() — recording, then speech model, then TTS

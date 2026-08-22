@@ -8,8 +8,8 @@
  *
  *   1. A HUMAN RECORDING, made at /studio. Always wins. Nothing here changes
  *      that, and nothing here is offered to a line that has one.
- *   2. THIS — Fish Audio, reached through the Vercel AI Gateway, cached as an
- *      mp3 in the same store the recordings live in.
+ *   2. THIS — an OpenAI speech model, reached through the Vercel AI Gateway,
+ *      cached as an mp3 in the same store the recordings live in.
  *   3. The browser's own SpeechSynthesis voice, which is where the app used to
  *      stop, and where it still stops if neither of the above is available.
  *
@@ -23,13 +23,15 @@
  *     what a browser voice does not have.
  *   · LETTER SOUNDS. "buh", "ss", "kuh" are not words, so a browser voice
  *     guesses at them — and guesses differently on an iPhone than on a school
- *     Chromebook. A speech model that takes an `instructions` string can be
- *     told, in words, that this is a single English phoneme spoken in
- *     isolation, and handed the IPA the curriculum already carries.
+ *     Chromebook. A speech model reads them the same way on every device, for
+ *     every child, which is most of the value: a phoneme a child is learning
+ *     to recognise must not change shape between the tablet and the laptop.
+ *     (The direction below can also NAME the phoneme in IPA, on a model that
+ *     is steerable. See SYNTH_MODEL for why the current one is not.)
  *   · HEBREW. The walkthrough and every tutorial card are Hebrew, and the app
  *     deliberately never sent those to a browser voice (see lib/voice/lines.ts
  *     — a robotic Hebrew voice reading to a 7-year-old is worse than silence).
- *     So until a human records them they are silent today. Fish's S2 line is
+ *     So until a human records them they are silent today. The speech model is
  *     multilingual, which turns that silence into something a child can
  *     actually listen to while they look at the card.
  *
@@ -38,8 +40,7 @@
  * Nothing per play, and almost nothing ever: the catalogue is closed (~180
  * lines), a line is generated at most once per DIRECTION_VERSION, and the mp3
  * is then served from the store and the CDN. The whole catalogue is a few
- * thousand characters — cents at list price, and the Fish models are
- * complimentary on the gateway through 18 September 2026.
+ * thousand characters — cents at list price.
  *
  * WHY A RAW `fetch` AND NOT THE AI SDK
  * ------------------------------------
@@ -63,24 +64,65 @@ import { getVoiceLine, type VoiceLine } from "./lines";
 /**
  * The speech model, as a gateway `creator/model-name` id.
  *
- * `fish-audio/s2.1-pro` is Fish's current best: multilingual (which is what
- * makes the Hebrew cards possible) and steerable by an `instructions` string
- * (which is what makes the letter sounds possible).
+ * WHY THIS IS NOT FISH ANY MORE.
  *
- * Append `-free` — `fish-audio/s2.1-pro-free` — to pin the promotional free
- * variant, which stops serving rather than starting to bill when the promo
- * ends. Override with VOICE_SYNTH_MODEL; any gateway speech model works,
- * including `openai/tts-1`.
+ * It was `fish-audio/s2.1-pro`, chosen for two real strengths — it is
+ * multilingual, and it takes an `instructions` string. In use it failed at
+ * the one thing this app needs more than either: SOUNDING THE SAME TWICE.
+ * Fish's expressive line is built to perform, and asked for a single word or
+ * a five-word sentence it performs — it lilts, it sings the line, and it
+ * picks a different speaker from one generation to the next when no cloned
+ * voice id is pinned. A child hearing "cat" in one voice and "the cat is
+ * big" in another, one of them half-sung, cannot use either as a model of
+ * how English sounds. That is not a tuning problem, it is the wrong tool.
+ *
+ * `openai/tts-1-hd` is the right one here. Its six voices are fixed and
+ * named, so PINNING ONE MAKES EVERY GENERATED LINE THE SAME SPEAKER, forever,
+ * across letters, words and sentences. It reads plainly — no performance, no
+ * melody — which is exactly what a pronunciation model should do. It honours
+ * `speed`, which is how the groups below stay differently paced. And it is
+ * multilingual enough for the Hebrew cards.
+ *
+ * WHAT IT COSTS US: `instructions` is an OpenAI `gpt-4o-mini-tts` feature and
+ * the gateway's speech catalogue does not carry that model. tts-1-hd ignores
+ * direction. See `supportsInstructions` — the direction is still written, and
+ * still sent to any model that can use it, so switching back to a steerable
+ * model is one environment variable.
+ *
+ * Override with VOICE_SYNTH_MODEL; any gateway speech model works.
  */
-export const SYNTH_MODEL = process.env.VOICE_SYNTH_MODEL ?? "fish-audio/s2.1-pro";
+export const SYNTH_MODEL = process.env.VOICE_SYNTH_MODEL ?? "openai/tts-1-hd";
 
 /**
- * A Fish voice id, if you have one. Fish supports voice cloning from a short
- * sample, so the honest use of this variable is: record a minute at /studio,
- * clone it, and let the synthesised lines sound like the same person who
- * recorded the rest. Unset means the model's default voice.
+ * THE VOICE, AND WHY IT HAS A DEFAULT NOW.
+ *
+ * It did not, and an unpinned voice on a model that picks one per request is
+ * the whole of "the voice keeps changing". One name, written down, is the
+ * fix — every synthesised line in the app is this speaker.
+ *
+ * `nova` is the warmest and least announcer-like of OpenAI's six (`alloy`,
+ * `echo`, `fable`, `onyx`, `nova`, `shimmer`), which is what the direction
+ * below asks for in words and cannot ask for on this model.
+ *
+ * On a model that clones — Fish, say — this is where a voice id from a minute
+ * recorded at /studio goes, so the synthesised lines sound like the person
+ * who recorded the rest. Changing it is a voice change for the whole app:
+ * bump DIRECTION_VERSION with it, or half the catalogue stays the old speaker.
  */
-const SYNTH_VOICE = process.env.VOICE_SYNTH_VOICE;
+const SYNTH_VOICE = process.env.VOICE_SYNTH_VOICE ?? "nova";
+
+/**
+ * Does this model act on `instructions`, or merely accept and ignore it?
+ *
+ * The gateway does not fail a request over an option a model cannot use — it
+ * reports it in `warnings` — so sending direction everywhere would "work" and
+ * quietly do nothing. Naming the models that honour it keeps the difference
+ * visible: on tts-1/tts-1-hd the direction is documentation, on a steerable
+ * model it is input.
+ */
+function supportsInstructions(model: string): boolean {
+  return /gpt-4o.*-tts|fish-audio|grok-tts/.test(model);
+}
 
 /**
  * BUMP THIS WHENEVER THE DIRECTION BELOW CHANGES.
@@ -89,7 +131,7 @@ const SYNTH_VOICE = process.env.VOICE_SYNTH_VOICE;
  * with the new direction rather than serving yesterday's take forever. Old
  * versions are orphaned rather than deleted — see docs/voice.md.
  */
-export const DIRECTION_VERSION = "v1";
+export const DIRECTION_VERSION = "v2";
 
 const ENDPOINT = `${GATEWAY_BASE}/speech-model`;
 
@@ -122,14 +164,17 @@ export async function synthEnvSummary(): Promise<{
   model: string;
   version: string;
   credential: "api-key" | "oidc" | null;
-  voice: boolean;
+  /** The pinned speaker. A voice NAME is not a secret; an unpinned one is a bug. */
+  voice: string;
+  steerable: boolean;
 }> {
   return {
     enabled: synthEnabled(),
     model: SYNTH_MODEL,
     version: DIRECTION_VERSION,
     credential: await credentialKind(),
-    voice: Boolean(SYNTH_VOICE),
+    voice: SYNTH_VOICE,
+    steerable: supportsInstructions(SYNTH_MODEL),
   };
 }
 
@@ -184,6 +229,8 @@ export function directionFor(line: VoiceLine): Direction {
         text: line.text,
         language: "en",
         speed: 0.85,
+        // Written for a steerable model, and true whether or not the model
+        // in use today acts on it — see `supportsInstructions`.
         instructions:
           `Produce the single English phoneme ${ipa} in isolation — the SOUND ` +
           `the letter "${letter}" makes, not its name. Keep it short and ` +
@@ -261,11 +308,14 @@ export async function synthesizeLine(id: string): Promise<SynthResult> {
       }),
       body: JSON.stringify({
         text: d.text,
-        instructions: d.instructions,
+        // Sent only where it is acted on. On tts-1-hd it would come back as a
+        // warning and change nothing, which is worse than not sending it: it
+        // reads, in the logs and in the code, as steering that is happening.
+        ...(supportsInstructions(SYNTH_MODEL) ? { instructions: d.instructions } : {}),
         language: d.language,
         speed: d.speed,
         outputFormat: "mp3",
-        ...(SYNTH_VOICE ? { voice: SYNTH_VOICE } : {}),
+        voice: SYNTH_VOICE,
       }),
       signal: controller.signal,
     });
@@ -280,6 +330,17 @@ export async function synthesizeLine(id: string): Promise<SynthResult> {
 
     const body = (await res.json()) as GatewaySpeechResponse;
     if (!body?.audio) return { ok: false, reason: "upstream", detail: "no-audio" };
+    /*
+     * A warning here means the model silently dropped something we asked for —
+     * the voice, the speed, the language. Every one of those is audible, and
+     * a dropped `voice` is precisely the failure this file exists to fix, so
+     * it gets said out loud rather than discovered by ear.
+     */
+    if (Array.isArray(body.warnings) && body.warnings.length) {
+      console.warn(
+        `[voice-synth] ${id}: model warnings ${JSON.stringify(body.warnings).slice(0, 200)}`,
+      );
+    }
 
     return {
       ok: true,
