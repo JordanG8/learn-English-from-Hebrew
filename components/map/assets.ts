@@ -45,7 +45,8 @@ export type ModelKey =
   | "lantern"
   | "cart"
   | "fountain"
-  | "stall";
+  | "stall"
+  | "pedestal";
 
 const SOURCES: Record<ModelKey, string> = {
   treeOak: "/models/nature/tree_oak.glb",
@@ -64,6 +65,11 @@ const SOURCES: Record<ModelKey, string> = {
   cart: "/models/town/cart.glb",
   fountain: "/models/town/fountain-center.glb",
   stall: "/models/town/stall.glb",
+  // A real fluted stone column, base and capital included — the number
+  // plaque still rides on top of it. See scene.ts's buildPad for why: a
+  // hand-built stack of cylinders read as generic no matter how it was
+  // tuned, and a real monument shape didn't cost anything extra to load.
+  pedestal: "/models/nature/statue_column.glb",
 };
 
 /** Loaded once per key, shared as the template every placement clones. */
@@ -121,10 +127,30 @@ export function preloadModels(): Promise<void> {
   return readyPromise;
 }
 
-/** A model, ready to place — a fresh clone so instances can move
- *  independently — or null if it has not finished loading (or failed:
- *  a missing model is a bare patch of grass, never a crash). */
-export function getModel(key: ModelKey): THREE.Object3D | null {
+/**
+ * A model, ready to place — a fresh clone so instances can move
+ * independently — or null if it has not finished loading (or failed: a
+ * missing model is a bare patch of grass, never a crash).
+ *
+ * `uniqueMaterials` additionally clones every mesh's material, not just the
+ * Object3D hierarchy — `clone(true)` shares materials by default, which is
+ * exactly right for a tree or a rock (every instance is the same colour, so
+ * sharing is free) and wrong for the pedestal, where each one needs its own
+ * colour for its own lock state. Skip it unless a caller is about to mutate
+ * `.color` on what comes back — an unshared material is not tracked in
+ * SHARED_MODEL_RESOURCES, so it is the caller's pad that owns disposing it.
+ */
+export function getModel(
+  key: ModelKey,
+  opts: { uniqueMaterials?: boolean } = {},
+): THREE.Object3D | null {
   const t = templates.get(key);
-  return t ? t.clone(true) : null;
+  if (!t) return null;
+  const root = t.clone(true);
+  if (opts.uniqueMaterials) {
+    root.traverse((o) => {
+      if (o instanceof THREE.Mesh) o.material = (o.material as THREE.Material).clone();
+    });
+  }
+  return root;
 }

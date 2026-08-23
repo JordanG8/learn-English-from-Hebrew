@@ -249,6 +249,22 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   // visits to /map.
   const modelsReady = preloadModels();
   const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+  /*
+   * The FIRST pad build always runs before any model has had even one tick
+   * to resolve — `refreshPads()` is called synchronously in `setLevels`,
+   * same script turn as `preloadModels()` above, and a fetch cannot finish
+   * before the code that started it returns. So the pedestal a child sees on
+   * first paint is always the hand-built fallback; without this, it would
+   * stay that way forever; `padSignature` below reads `modelsLoaded`, so the
+   * moment loading finishes this line invalidates every visible pad's
+   * signature and `refreshPads()` rebuilds them with the real column.
+   */
+  let modelsLoaded = false;
+  modelsReady.then(() => {
+    if (disposed) return;
+    modelsLoaded = true;
+    refreshPads();
+  });
 
   let renderer: THREE.WebGLRenderer;
   try {
@@ -273,8 +289,21 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   scene.fog = new THREE.Fog(C.haze, 52, 132);
 
   /* --- camera: fixed isometric, like chess.com ---------------------- */
-  const ISO = new THREE.Vector3(1, 1.08, 1).normalize();
-  const VIEW = 27; // half-height of the frustum in world units, on a wide screen
+  /*
+   * A dead-symmetric (1, y, 1) rig looks flat — the road runs exactly up the
+   * centre of the screen and nothing about the angle says "3D" rather than
+   * "diagram". A small yaw off that diagonal is the whole trick: it stays an
+   * isometric-style fixed camera (no perspective, no per-frame rotation),
+   * but the asymmetry it introduces is what actually reads as depth.
+   */
+  const ISO_YAW = -9 * (Math.PI / 180); // subtle — see above
+  const ISO = new THREE.Vector3(1, 1.08, 1)
+    .applyAxisAngle(new THREE.Vector3(0, 1, 0), ISO_YAW)
+    .normalize();
+  // Half-height of the frustum in world units, on a wide screen. 18, not the
+  // 27 this used to be — the old framing sat far enough back that the brick
+  // and the pedestals barely read until a child pinch-zoomed in by hand.
+  const VIEW = 18;
   const STANDOFF = 60;
   const camera = new THREE.OrthographicCamera(-VIEW, VIEW, VIEW, -VIEW, 0.1, 260);
   const camTarget = new THREE.Vector3();
@@ -959,17 +988,61 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
    * is slim enough to see brick either side of it, and the extra height is
    * what carries the number clear of everything.
    */
+  /*
+   * The real pedestal is a loaded model — see PEDESTAL_SCALE below — and
+   * these four cylinders are what a pad stands on ONLY until that model has
+   * loaded, or if it never does. They existed as the whole pedestal in an
+   * earlier pass; keeping their geometry around as a fallback was free, and
+   * a hand-built stand-in beats an empty column of air for the ~600ms a
+   * normal load takes.
+   */
   const stepAGeo = new THREE.CylinderGeometry(1.5, 1.74, 0.36, 8);
   const stepBGeo = new THREE.CylinderGeometry(1.28, 1.46, 0.3, 8);
   const shaftGeo = new THREE.CylinderGeometry(0.98, 1.16, 1.7, 8);
-  const corniceGeo = new THREE.CylinderGeometry(1.34, 1.02, 0.3, 8);
-  const padGeo = new THREE.CylinderGeometry(1.26, 1.36, 0.26, 8);
   const STEP_A_Y = 0.18;
   const STEP_B_Y = 0.51;
   const SHAFT_Y = 1.51;
-  const CORNICE_Y = 2.51;
-  const CROWN_Y = 2.79; // centre of the cap; the crown group bobs from here
-  const PAD_TOP = 2.92; // the surface a pencil stands on
+  /*
+   * The real pedestal is Nature Kit's statue_column — a fluted stone shaft
+   * with a flared base and capital, base-to-top in one native unit. Scaled
+   * ×2.85 to stand roughly where the old hand-built stack topped out.
+   * `PEDESTAL_LIFT` corrects for the model's own -0.05 origin offset (its
+   * geometry actually spans y=0..1 but the loaded node sits 0.05 low) so the
+   * base still meets the road exactly rather than sinking into it.
+   *
+   * `FALLBACK_SCALE` reconciles a genuine mismatch: the real column's own
+   * width (0.3 native units, ~0.85 at this scale) is a column's width, not a
+   * pedestal's — narrower than the three-layer fallback stack it replaces.
+   * Both still have to hand off to the SAME cornice and plaque above them
+   * (see below), so the fallback stack is rescaled as one unit to top out at
+   * exactly the height the real column does, whichever one is showing.
+   */
+  const PEDESTAL_SCALE = 2.85;
+  const PEDESTAL_LIFT = 0.05 * PEDESTAL_SCALE;
+  const FALLBACK_TOP = SHAFT_Y + 0.85; // shaft's own top, before rescaling
+  const FALLBACK_SCALE = PEDESTAL_SCALE / FALLBACK_TOP;
+  /*
+   * THE CAPITAL. A real column ~0.85 units wide cannot hand off directly to
+   * a ~2.7-wide number plaque — seen at map distance that read as a plaque
+   * balanced on a toothpick. `corniceGeo` is what a capital has always been
+   * for: it flares from a radius near the column's own (1.02) up to one near
+   * the plaque's (1.34), so the width change happens as one deliberate
+   * transition instead of a jump. It sits directly on top of the column (or
+   * the rescaled fallback stack) and is shared by both.
+   */
+  // Top radius (1.6) is deliberately WIDER than the plaque sitting on it
+  // (padGeo's own 1.26-1.36) — from this camera's steep top-down angle, a
+  // capital only NARROWER than the plaque above it is invisible, hidden
+  // entirely in the plaque's own shadow. Wider is what makes it read as a
+  // capital the plaque rests ON, rather than as part of the plaque itself.
+  const corniceGeo = new THREE.CylinderGeometry(1.6, 1.0, 0.3, 8);
+  const padGeo = new THREE.CylinderGeometry(1.26, 1.36, 0.26, 8); // the number plaque
+  const CORNICE_Y = PEDESTAL_SCALE + 0.15; // its own half-height above the column top
+  // The plaque's own half-height (0.13) above the capital's top (CORNICE_Y + 0.15) —
+  // get this wrong, as the first pass did by omitting it, and the plaque sinks half
+  // its own thickness into the capital instead of resting on it.
+  const CROWN_Y = CORNICE_Y + 0.15 + 0.13;
+  const PAD_TOP = CROWN_Y + 0.13; // the surface a pencil stands on
   const ringGeo = new THREE.TorusGeometry(1.55, 0.11, 6, 20);
   /*
    * TAP TARGET. A pad is about 40 physical pixels across on a phone, and a
@@ -1003,7 +1076,12 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   const padMap = new Map<number, Pad>();
 
   function padSignature(node: LevelNode): string {
-    return [node.id, node.label, node.unlocked, node.done, node.isNext, node.isChat].join("|");
+    // modelsLoaded is last on purpose: it flips at most once, from false to
+    // true, and every already-built pad's signature changes with it — that
+    // one-time mismatch is what upgrades a fallback stack to the real column.
+    return [node.id, node.label, node.unlocked, node.done, node.isNext, node.isChat, modelsLoaded].join(
+      "|",
+    );
   }
 
   function buildPad(node: LevelNode, index: number): Pad {
@@ -1016,41 +1094,83 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     const wob = mulberry(index * 2654435761)();
     g.scale.setScalar(0.94 + wob * 0.12);
 
-    const stoneMat = new THREE.MeshLambertMaterial({
-      color: node.unlocked ? C.plinth : C.padLocked,
-      flatShading: true,
-    });
-    const stoneDarkMat = new THREE.MeshLambertMaterial({
-      color: node.unlocked ? C.plinthDark : C.padLocked,
-      flatShading: true,
-    });
-    const shaftMat = new THREE.MeshLambertMaterial({
-      // The shaft is the road's own brick, so a level reads as grown out of
-      // the road rather than parked beside it.
-      color: node.unlocked ? C.brick : C.padLocked,
-      flatShading: true,
-    });
+    const turn = wob * Math.PI * 2;
     const capMat = new THREE.MeshLambertMaterial({
       color: node.isNext ? C.next : node.unlocked ? C.padCap : C.padLocked,
       flatShading: true,
     });
 
-    const turn = wob * Math.PI * 2;
-    // Steps and shaft share one yaw; the cornice is turned half a facet off it,
-    // which is the small thing that makes an eight-sided stack look carved.
-    for (const [geo, y, mat, spin] of [
-      [stepAGeo, STEP_A_Y, stoneDarkMat, turn],
-      [stepBGeo, STEP_B_Y, stoneMat, turn],
-      [shaftGeo, SHAFT_Y, shaftMat, turn],
-      [corniceGeo, CORNICE_Y, stoneMat, turn + Math.PI / 8],
-    ] as [THREE.CylinderGeometry, number, THREE.Material, number][]) {
-      const m = new THREE.Mesh(geo, mat);
-      m.position.y = y;
-      m.rotation.y = spin;
-      m.castShadow = !opts.reducedMotion;
-      m.receiveShadow = !opts.reducedMotion;
-      g.add(m);
+    /*
+     * A LEVEL IS A PEDESTAL — and now a real one: a fluted stone column,
+     * loaded once and cloned per pad. `uniqueMaterials: true` is what makes
+     * the next line safe — every pad gets its own material instance to tint,
+     * rather than a shared one every OTHER pad would also change colour.
+     *
+     * A locked pedestal goes flat grey, matched to the locked plaque above
+     * it. An unlocked one keeps the model's own pale stone — it needed no
+     * repainting to fit: the map already has grey-stone ABC ruins in the
+     * same palette, so a stone monument standing every few levels reads as
+     * the same world, not an inserted asset.
+     */
+    const column = getModel("pedestal", { uniqueMaterials: true });
+    if (column) {
+      column.scale.setScalar(PEDESTAL_SCALE);
+      column.position.y = PEDESTAL_LIFT;
+      column.rotation.y = turn;
+      column.traverse((o) => {
+        if (!(o instanceof THREE.Mesh)) return;
+        o.castShadow = !opts.reducedMotion;
+        o.receiveShadow = !opts.reducedMotion;
+        if (!node.unlocked) (o.material as THREE.MeshLambertMaterial).color.set(C.padLocked);
+      });
+      g.add(column);
+    } else {
+      // The model has not loaded yet (or never will) — the hand-built stack
+      // this pedestal used to be, minus its own cornice (there is now one
+      // shared capital below, common to both paths), rescaled by
+      // FALLBACK_SCALE so it hands off to that capital at the same height
+      // the real column does.
+      const stoneMat = new THREE.MeshLambertMaterial({
+        color: node.unlocked ? C.plinth : C.padLocked,
+        flatShading: true,
+      });
+      const stoneDarkMat = new THREE.MeshLambertMaterial({
+        color: node.unlocked ? C.plinthDark : C.padLocked,
+        flatShading: true,
+      });
+      const shaftMat = new THREE.MeshLambertMaterial({
+        color: node.unlocked ? C.brick : C.padLocked,
+        flatShading: true,
+      });
+      const fallback = new THREE.Group();
+      fallback.scale.setScalar(FALLBACK_SCALE);
+      for (const [geo, y, mat] of [
+        [stepAGeo, STEP_A_Y, stoneDarkMat],
+        [stepBGeo, STEP_B_Y, stoneMat],
+        [shaftGeo, SHAFT_Y, shaftMat],
+      ] as [THREE.CylinderGeometry, number, THREE.Material][]) {
+        const m = new THREE.Mesh(geo, mat);
+        m.position.y = y;
+        m.rotation.y = turn;
+        m.castShadow = !opts.reducedMotion;
+        m.receiveShadow = !opts.reducedMotion;
+        fallback.add(m);
+      }
+      g.add(fallback);
     }
+
+    // The capital: shared by the real column and the fallback stack alike,
+    // and the same colour rule as the rest of the stonework beneath it.
+    const corniceMat = new THREE.MeshLambertMaterial({
+      color: node.unlocked ? C.plinth : C.padLocked,
+      flatShading: true,
+    });
+    const cornice = new THREE.Mesh(corniceGeo, corniceMat);
+    cornice.position.y = CORNICE_Y;
+    cornice.rotation.y = turn + Math.PI / 8;
+    cornice.castShadow = !opts.reducedMotion;
+    cornice.receiveShadow = !opts.reducedMotion;
+    g.add(cornice);
 
     /*
      * The crown — cap, number and stars — is one group because they move as
@@ -1346,11 +1466,28 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   const WINDOW_MEMORY_COUNT = 3;
   let focusTrail: { index: number; until: number }[] = [];
   let nextPadPruneAt = 0;
+  /**
+   * Where the camera is actually LOOKING, independent of `focusIndex` (which
+   * only moves on a tap). Dragging used to go nowhere: the pad window only
+   * ever followed `focusIndex`, so panning past it showed real brick running
+   * out into an empty track after ~13 levels — and the one way to see more
+   * was to tap the furthest unlocked pad, which moved `focusIndex` and
+   * rebuilt the window there. This anchor lets a drag do the same thing
+   * continuously, so the whole course scrolls, locked levels included.
+   */
+  let panWindowIndex = 0;
 
   function disposePad(p: Pad) {
     p.group.traverse((o) => {
       if (o instanceof THREE.Mesh) {
-        if (!SHARED_PAD_GEO.has(o.geometry)) o.geometry.dispose();
+        // Two different "shared" sets: SHARED_PAD_GEO is this file's own
+        // hand-built fallback geometry; SHARED_MODEL_RESOURCES (assets.ts)
+        // is the pedestal model's geometry — cloned per pad for its
+        // material (see PEDESTAL_SCALE above) but NOT for its geometry, so
+        // disposing it here would free it out from under every other pad.
+        if (!SHARED_PAD_GEO.has(o.geometry) && !SHARED_MODEL_RESOURCES.has(o.geometry)) {
+          o.geometry.dispose();
+        }
         const m = o.material as THREE.Material | THREE.Material[];
         if (Array.isArray(m)) m.forEach((x) => x.dispose());
         else m.dispose();
@@ -1381,7 +1518,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
 
   function desiredPadIndices(now: number): Set<number> {
     focusTrail = focusTrail.filter((entry) => entry.until > now);
-    const anchors = [focusIndex, ...focusTrail.map((entry) => entry.index)];
+    const anchors = [focusIndex, panWindowIndex, ...focusTrail.map((entry) => entry.index)];
     const desired = new Set(
       padWindowIndices(levels.length, anchors, PAD_WINDOW_BACK, PAD_WINDOW_FORWARD),
     );
@@ -1784,11 +1921,19 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
    *     band at both ends, and drifts back to where you are when you rest.
    *   · There was no zoom at all. Two fingers now do the obvious thing.
    */
-  // Bounded by the pads that actually exist: WINDOW_BACK/WINDOW_FWD decide how
-  // much road is built around the focus, and panning past that end shows an
-  // empty track, which reads as the game having run out.
-  const PAN_MIN = -3;
-  const PAN_MAX = 7;
+  /*
+   * Bounded by the TRACK, not by the pad window any more: the pad window
+   * (WINDOW_BACK/WINDOW_FWD) follows `panWindowIndex` as the camera moves
+   * (see the frame loop below) and rebuilds around wherever that lands, so a
+   * drag can reach any level, unlocked or not — this is what lets a child
+   * scroll the whole course from level 1. What DOES still bound the drag is
+   * the track's own ends: level 0 and the last level that exists.
+   */
+  function panBounds(): { min: number; max: number } {
+    const total = levels.length;
+    if (total <= 0) return { min: 0, max: 0 };
+    return { min: -focusIndex, max: total - 1 - focusIndex };
+  }
   const RECENTRE_AFTER = 5000; // ms of stillness before the camera drifts home
 
   const pointers = new Map<number, { x: number; y: number }>();
@@ -1824,8 +1969,9 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
 
   /** Past either end the pan still moves, but at a third — it pushes back. */
   function rubber(v: number): number {
-    if (v < PAN_MIN) return PAN_MIN + (v - PAN_MIN) * 0.35;
-    if (v > PAN_MAX) return PAN_MAX + (v - PAN_MAX) * 0.35;
+    const { min, max } = panBounds();
+    if (v < min) return min + (v - min) * 0.35;
+    if (v > max) return max + (v - max) * 0.35;
     return v;
   }
 
@@ -1953,7 +2099,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
         panVel = 0;
       }
       // Past an end, the band pulls back.
-      const clamped = THREE.MathUtils.clamp(panGoal, PAN_MIN, PAN_MAX);
+      const { min: panMin, max: panMax } = panBounds();
+      const clamped = THREE.MathUtils.clamp(panGoal, panMin, panMax);
       if (clamped !== panGoal) {
         panGoal += (clamped - panGoal) * Math.min(1, dt * 9);
         panVel = 0;
@@ -1974,6 +2121,14 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     // finger has dragged. During the level-up the camera belongs to the
     // cinematic and follows the landing instead.
     const shown = focusIndex + panOffset;
+    // Keep the pad window under wherever the camera is actually looking, not
+    // just under `focusIndex`. Threshold of 3 (a quarter of the window)
+    // keeps this from rebuilding pads on every single frame of a flick.
+    const roundedShown = Math.round(shown);
+    if (Math.abs(roundedShown - panWindowIndex) >= 3) {
+      panWindowIndex = roundedShown;
+      refreshPads();
+    }
     // Look PAST the focus: that pushes the pad you are on down the frame and
     // leaves the road climbing away above it, which is the whole point of the
     // perspective. How far past is `lookAhead`, which a phone shortens so the
@@ -2189,6 +2344,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       levels = next;
       if (focusIndex !== focus) rememberFocus(focusIndex);
       focusIndex = focus;
+      panWindowIndex = focus;
       rememberFocus(focus);
       if (!built) {
         built = true;
@@ -2234,6 +2390,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     focus(index: number) {
       if (focusIndex !== index) rememberFocus(focusIndex);
       focusIndex = index;
+      panWindowIndex = index;
       rememberFocus(index);
       panGoal = 0;
       panVel = 0;
@@ -2254,6 +2411,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     advance(from: number, to: number) {
       if (focusIndex !== to) rememberFocus(focusIndex);
       focusIndex = to;
+      panWindowIndex = to;
       rememberFocus(to);
       panGoal = 0;
       panOffset = 0;
