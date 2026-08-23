@@ -26,6 +26,7 @@ import * as THREE from "three";
 
 import { ADV_CROUCH, ADV_FLIGHT, ADV_IMPACT, ADV_SETTLE, ADV_STILL } from "./timing";
 import { PAD_WINDOW_BACK, PAD_WINDOW_FORWARD, padWindowIndices } from "./window";
+import { getModel, preloadModels, SHARED_MODEL_RESOURCES, type ModelKey } from "./assets";
 
 export interface LevelNode {
   id: string;
@@ -243,6 +244,11 @@ function letterC(): THREE.Shape {
 
 export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   const rnd = mulberry(0x5eed);
+  // Fire the moment a world is created; every world after the first shares
+  // the one cached promise (see assets.ts), so this costs nothing on repeat
+  // visits to /map.
+  const modelsReady = preloadModels();
+  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
   let renderer: THREE.WebGLRenderer;
   try {
@@ -406,7 +412,12 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
    * length — the same budget as the two ribbons it replaces. Per-instance
    * colour does the variation, so there is still not one texture to load.
    */
-  const ROAD_HALF = 2.3;
+  // Wider than the first pass: at the default (non-pinch-zoomed) camera
+  // distance a 2.3-unit half-width read as a footpath — the brick courses
+  // barely registered until a child zoomed in. Every dependent measurement
+  // below (kerb offset, pedestal footprint, VERGE_CLEAR) reads ROAD_HALF, so
+  // widening it here is the whole change.
+  const ROAD_HALF = 3.3;
 
   /** Y of the brick surface at (x, z) — pads and props sit relative to this. */
   function roadSurface(x: number, z: number): number {
@@ -604,7 +615,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     return g;
   }
 
-  const swayers: { g: THREE.Group; phase: number; amp: number }[] = [];
+  const swayers: { g: THREE.Object3D; phase: number; amp: number }[] = [];
   const floaters: {
     g: THREE.Object3D;
     home: THREE.Vector3;
@@ -625,7 +636,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   /** Low cover. Trees alone leave the ground reading as a bare sheet. */
   function undergrowth(x: number, z: number): THREE.Object3D {
     const roll = rnd();
-    if (roll < 0.42) {
+    if (roll < 0.3) {
       const g = new THREE.Group();
       for (let i = 0; i < 3; i++) {
         const b = new THREE.Mesh(bushGeo, bushMat);
@@ -637,11 +648,44 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       g.position.set(x, terrainHeight(x, z), z);
       return g;
     }
-    if (roll < 0.7) {
+    if (roll < 0.5) {
+      // A real boulder where one has loaded; the same hand-built rock else.
+      const real = placeModel("rock", x, z, { rotY: rnd() * Math.PI * 2, scale: 0.9 + rnd() * 0.6 });
+      if (real) return real;
       const r = new THREE.Mesh(rockGeo, rockMat);
       r.position.set(x, terrainHeight(x, z) + 0.1, z);
       r.scale.set(0.6 + rnd() * 0.7, 0.4 + rnd() * 0.4, 0.6 + rnd() * 0.7);
       r.rotation.set(rnd(), rnd(), rnd());
+      r.castShadow = !opts.reducedMotion;
+      return r;
+    }
+    if (roll < 0.6) {
+      const real = placeModel("stump", x, z, { rotY: rnd() * Math.PI * 2, scale: 1.7 + rnd() * 0.8 });
+      if (real) return real;
+      const r = new THREE.Mesh(rockGeo, rockMat);
+      r.position.set(x, terrainHeight(x, z) + 0.1, z);
+      r.scale.set(0.5 + rnd() * 0.3, 0.5 + rnd() * 0.3, 0.5 + rnd() * 0.3);
+      r.castShadow = !opts.reducedMotion;
+      return r;
+    }
+    if (roll < 0.68) {
+      const real = placeModel("mushrooms", x, z, { rotY: rnd() * Math.PI * 2, scale: 2.2 + rnd() * 1.2 });
+      if (real) return real;
+      const g = new THREE.Group();
+      const b = new THREE.Mesh(bushGeo, bushMat);
+      b.scale.setScalar(0.4 + rnd() * 0.3);
+      b.castShadow = !opts.reducedMotion;
+      g.add(b);
+      g.position.set(x, terrainHeight(x, z), z);
+      return g;
+    }
+    if (roll < 0.76) {
+      const real = placeModel("logStack", x, z, { rotY: rnd() * Math.PI * 2, scale: 1.5 + rnd() * 0.7 });
+      if (real) return real;
+      const r = new THREE.Mesh(rockGeo, rockMat);
+      r.position.set(x, terrainHeight(x, z) + 0.1, z);
+      r.scale.set(0.7 + rnd() * 0.3, 0.35 + rnd() * 0.2, 0.4 + rnd() * 0.2);
+      r.rotation.set(0, rnd() * Math.PI, 0);
       r.castShadow = !opts.reducedMotion;
       return r;
     }
@@ -1369,6 +1413,26 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     pads = [...padMap.values()].sort((a, b) => a.index - b.index);
   }
 
+  /**
+   * Place a loaded model, or return null so the caller can fall back to its
+   * hand-built equivalent. Every call site below has a fallback — a slow
+   * connection or a 404 degrades to the road this app already had, never to
+   * a hole in the scene.
+   */
+  function placeModel(
+    key: ModelKey,
+    x: number,
+    z: number,
+    opts: { rotY?: number; scale?: number; yOffset?: number } = {},
+  ): THREE.Object3D | null {
+    const m = getModel(key);
+    if (!m) return null;
+    m.position.set(x, terrainHeight(x, z) + (opts.yOffset ?? 0), z);
+    m.rotation.y = opts.rotY ?? 0;
+    if (opts.scale) m.scale.setScalar(opts.scale);
+    return m;
+  }
+
   function buildScenery(count: number) {
     const extent = Math.max(count, 46);
     /*
@@ -1413,7 +1477,19 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
         const jitter = (rnd() - 0.5) * SPACING;
         const x = base.x + SIDE.x * off + FWD.x * jitter;
         const z = base.z + SIDE.z * off + FWD.z * jitter;
-        const t = tree(x, z, 0.9 + rnd() * 0.9);
+        // Real trees where they have loaded — oak most often, pine and palm
+        // for variety — the hand-built low-poly tree everywhere else.
+        const roll = rnd();
+        const key: ModelKey = roll < 0.5 ? "treeOak" : roll < 0.82 ? "treePine" : "treePalm";
+        // Native model height is ~1.2-1.4 units — a good deal shorter than
+        // the hand-built tree() it stands in for, which reaches 2.5-4 units
+        // canopy included. Scaled 1:1 it read as a shrub next to a pedestal;
+        // this brings it back to the same silhouette height.
+        const real = placeModel(key, x, z, {
+          rotY: rnd() * Math.PI * 2,
+          scale: 2.1 + rnd() * 1.1,
+        });
+        const t = real ?? tree(x, z, 0.9 + rnd() * 0.9);
         scenery.add(t);
         swayers.push({ g: t, phase: rnd() * Math.PI * 2, amp: 0.02 + rnd() * 0.03 });
       }
@@ -1515,16 +1591,130 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       scenery.add(open);
     }
 
-    /* Water breaks the green palette and gives the journey real places. */
+    /*
+     * Water breaks the green palette and gives the journey real places.
+     * Alternating a pond with a real stone fountain is what turns "the same
+     * prop every 17 levels" into two different kinds of place.
+     *
+     * The wooden bridge model is its own small thing, not a span for this
+     * pond — its footprint is a single ~1-unit tile, meant to cross a
+     * garden brook, not an 8-14 unit pond. Stretching it to fit would have
+     * turned delicate planking into a chunky slab. It gets its own cadence
+     * below, alongside a rock cluster, instead.
+     */
     for (let n = 0, at = 13; at < extent; n++, at += 17) {
       const side = n % 2 === 0 ? -1 : 1;
       const anchor = nodePosition(at);
       const x = anchor.x + SIDE.x * 20 * side;
       const z = anchor.z + SIDE.z * 20 * side;
+      if (n % 2 === 1) {
+        // fountain-center is a 1-unit tile in Fantasy Town Kit's own grid —
+        // Nature Kit's props are on a ~1-unit grid too, but Town Kit's other
+        // five models here are all 2-unit, which is why their scales below
+        // look so much smaller than this one.
+        const real = placeModel("fountain", x, z, { rotY: n * 0.8, scale: 2.8 + rnd() * 0.6 });
+        if (real) {
+          scenery.add(real);
+          continue;
+        }
+      }
       const p = pond(0x90ad + n * 137);
       p.position.set(x, terrainHeight(x, z) - 0.13, z);
       p.rotation.y = n * 0.8;
       scenery.add(p);
+    }
+
+    /*
+     * SEVEN MORE LANDMARKS, each on its own cadence so no two ever line up:
+     * a windmill turning over the tree line, a stone archway framing the
+     * verge, a lit lantern at a child's-eye scale near the kerb, a garden
+     * bridge over its own little rock crossing, a trailside signpost, a
+     * campfire ring, and a cart-and-stall market cluster. Every one is
+     * skipped outright when its model has not loaded — there is no
+     * hand-built stand-in for a windmill, and an empty verge is a better
+     * failure than a placeholder box.
+     *
+     * SCALE, EXPLAINED ONCE: every number below is `desired world size ÷
+     * the model's own bounding-box size` — Nature Kit ships on a ~1-unit
+     * grid, Fantasy Town Kit mostly on a 2-unit one (fountain-center is the
+     * one Town Kit exception, see above), so a Town Kit scale that looks
+     * right is roughly half a Nature Kit one for the same world size. Get
+     * this wrong, as the first pass did, and a lantern comes out the size of
+     * a windmill.
+     */
+    for (let n = 0, at = 10; at < extent; n++, at += 26) {
+      const side = n % 2 === 0 ? 1 : -1;
+      const anchor = nodePosition(at);
+      const x = anchor.x + SIDE.x * 24 * side;
+      const z = anchor.z + SIDE.z * 24 * side;
+      // Native height 3.11; scaled to stand taller than the ABC ruin, so
+      // whichever landmark is nearer always reads as the bigger one.
+      const m = placeModel("windmill", x, z, { rotY: n * 0.6, scale: 2.1 + rnd() * 0.4 });
+      if (m) scenery.add(m);
+    }
+
+    for (let n = 0, at = 20; at < extent; n++, at += 23) {
+      const side = n % 2 === 0 ? -1 : 1;
+      const anchor = nodePosition(at);
+      const x = anchor.x + SIDE.x * 18 * side;
+      const z = anchor.z + SIDE.z * 18 * side;
+      const m = placeModel("arch", x, z, {
+        rotY: Math.PI / 2 + side * 0.2,
+        scale: 2.3 + rnd() * 0.4,
+      });
+      if (m) scenery.add(m);
+    }
+
+    for (let i = 2; i < extent; i += 5) {
+      const side = i % 10 < 5 ? -1 : 1;
+      const base = nodePosition(i);
+      const x = base.x + SIDE.x * (VERGE_CLEAR - 3) * side;
+      const z = base.z + SIDE.z * (VERGE_CLEAR - 3) * side;
+      // Deliberately the smallest scale of the six: this is a lamp post, not
+      // a landmark, and it lines the road every 5 levels — big would clutter
+      // exactly what the verge clean-up was for.
+      const m = placeModel("lantern", x, z, { rotY: rnd() * Math.PI * 2, scale: 0.5 + rnd() * 0.18 });
+      if (m) scenery.add(m);
+    }
+
+    for (let n = 0, at = 9; at < extent; n++, at += 21) {
+      const side = n % 2 === 0 ? -1 : 1;
+      const anchor = nodePosition(at);
+      const x = anchor.x + SIDE.x * 16 * side;
+      const z = anchor.z + SIDE.z * 16 * side;
+      const m = placeModel("bridge", x, z, { rotY: rnd() * Math.PI * 2, scale: 1.8 + rnd() * 0.5 });
+      if (m) scenery.add(m);
+    }
+
+    for (let n = 0, at = 6; at < extent; n++, at += 15) {
+      const side = n % 2 === 0 ? 1 : -1;
+      const anchor = nodePosition(at);
+      const x = anchor.x + SIDE.x * (VERGE_CLEAR + 2) * side;
+      const z = anchor.z + SIDE.z * (VERGE_CLEAR + 2) * side;
+      const m = placeModel("sign", x, z, { rotY: -side * Math.PI * 0.35, scale: 1.8 + rnd() * 0.6 });
+      if (m) scenery.add(m);
+    }
+
+    for (let n = 0, at = 16; at < extent; n++, at += 19) {
+      const side = n % 2 === 0 ? -1 : 1;
+      const anchor = nodePosition(at);
+      const x = anchor.x + SIDE.x * 15 * side;
+      const z = anchor.z + SIDE.z * 15 * side;
+      const m = placeModel("campfire", x, z, { rotY: rnd() * Math.PI * 2, scale: 2.0 + rnd() * 0.8 });
+      if (m) scenery.add(m);
+    }
+
+    for (let n = 0, at = 24; at < extent; n++, at += 28) {
+      const side = n % 2 === 0 ? 1 : -1;
+      const anchor = nodePosition(at);
+      const sx = anchor.x + SIDE.x * 19 * side;
+      const sz = anchor.z + SIDE.z * 19 * side;
+      const st = placeModel("stall", sx, sz, { rotY: -side * Math.PI * 0.3, scale: 1.3 + rnd() * 0.2 });
+      if (st) scenery.add(st);
+      const cx = sx + FWD.x * 4.5 + SIDE.x * side * 2;
+      const cz = sz + FWD.z * 4.5 + SIDE.z * side * 2;
+      const cart = placeModel("cart", cx, cz, { rotY: n * 0.9, scale: 0.85 + rnd() * 0.15 });
+      if (cart) scenery.add(cart);
     }
 
     /* High silhouettes add depth without competing with the playable pads. */
@@ -2002,13 +2192,27 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       rememberFocus(focus);
       if (!built) {
         built = true;
-        road = buildRoad(Math.max(next.length, 46));
-        scene.add(road);
-        buildScenery(Math.max(next.length, 46));
-        camTarget.copy(nodePosition(focus + 0.8));
-        placeCamera();
-        resize();
-        frame();
+        const span = Math.max(next.length, 46);
+        /*
+         * Race the sixteen imported models against a short clock rather than
+         * either extreme: build with hand-built stand-ins the instant they
+         * are ready (blocking on a slow connection would hold the whole map
+         * hostage to a tree), or ignore them entirely (a 330KB fetch that is
+         * usually done before this frame even runs deserves to be waited
+         * for). 600ms is short enough that a normal load never notices it,
+         * and long enough to cover the fetch on everything but a genuinely
+         * bad connection — which still gets the road on time, procedural.
+         */
+        Promise.race([modelsReady, sleep(600)]).then(() => {
+          if (disposed) return;
+          road = buildRoad(span);
+          scene.add(road);
+          buildScenery(span);
+          camTarget.copy(nodePosition(focusIndex + 0.8));
+          placeCamera();
+          resize();
+          frame();
+        });
       }
       refreshPads();
       if (advancing) return; // the cinematic owns the pencil until it finishes
@@ -2077,10 +2281,12 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       clearPads();
       scene.traverse((o) => {
         if (o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh) {
-          o.geometry.dispose();
+          if (!SHARED_MODEL_RESOURCES.has(o.geometry)) o.geometry.dispose();
           const m = o.material as THREE.Material | THREE.Material[];
-          if (Array.isArray(m)) m.forEach((x) => x.dispose());
-          else m.dispose();
+          const list = Array.isArray(m) ? m : [m];
+          for (const mat of list) {
+            if (!SHARED_MODEL_RESOURCES.has(mat)) mat.dispose();
+          }
         }
       });
       labelCache.forEach((t) => t.dispose());
