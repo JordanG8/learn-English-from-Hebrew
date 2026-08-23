@@ -33,7 +33,7 @@ import {
 import { useProgress } from "@/lib/progress-context";
 import { planMixedReview } from "@/lib/srs";
 import { buildReviewLesson, buildWarmupSteps, skillsForStep } from "@/lib/curriculum";
-import { starsFor, praise, encouragement, revealLine, completionHeadlineHe } from "@/lib/reward";
+import { starsFor, completionHeadlineHe } from "@/lib/reward";
 import type { Stars } from "@/lib/reward";
 import { playSfx } from "@/lib/audio";
 import {
@@ -99,8 +99,6 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
   /* --- Run state --------------------------------------------------- */
   const [index, setIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>("playing");
-  const [message, setMessage] = useState<string | null>(null);
-  const [messageTone, setMessageTone] = useState<"good" | "soft">("good");
   const [attemptsHere, setAttemptsHere] = useState(0);
   const [wrongTotal, setWrongTotal] = useState(0);
   const [celebrating, setCelebrating] = useState(false);
@@ -113,7 +111,6 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
   const forceHint = attemptsHere >= HINT_RESCUE_AFTER_WRONG;
 
   const advance = useCallback(() => {
-    setMessage(null);
     setAttemptsHere(0);
     setIndex((i) => i + 1);
     setPhase("playing");
@@ -133,8 +130,6 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
       skills.forEach((s) => attempt(s, { correct, hinted, latencyMs }));
 
       if (correct) {
-        setMessage(praise(index * 7 + attemptsHere));
-        setMessageTone("good");
         // build-word and build-sentence own their own pacing: they show the
         // hero celebration and call onAdvance themselves.
         if (step.type === "build-word" || step.type === "build-sentence") return;
@@ -143,24 +138,18 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
         return;
       }
 
-      const next = attemptsHere + 1;
-      setAttemptsHere(next);
+      setAttemptsHere((current) => current + 1);
       setWrongTotal((w) => w + 1);
 
       if (
-        next >= MAX_ATTEMPTS_PER_STEP &&
+        attemptsHere + 1 >= MAX_ATTEMPTS_PER_STEP &&
         step.type !== "build-word" &&
         step.type !== "build-sentence"
       ) {
-        // Never leave a child stuck in a failure loop. Show the answer,
-        // say something kind, move on. The SRS will bring it back.
-        setMessage(revealLine(index));
-        setMessageTone("soft");
+        // Never leave a child stuck in a failure loop. Move on and let the
+        // SRS bring this skill back later.
         setPhase("feedback");
         window.setTimeout(advance, 1600);
-      } else {
-        setMessage(encouragement(index * 3 + next));
-        setMessageTone("soft");
       }
     },
     [step, phase, forceHint, attemptsHere, attempt, index, advance],
@@ -207,7 +196,6 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
     setIndex(0);
     setWrongTotal(0);
     setAttemptsHere(0);
-    setMessage(null);
     setPhase("playing");
     shownAt.current = Date.now();
   }, []);
@@ -307,17 +295,6 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
         )}
       </div>
 
-      {message ? (
-        <div
-          role="status"
-          className={`sticky bottom-0 p-4 text-center text-2xl font-black ${
-            messageTone === "good" ? "text-go" : "text-ink-soft"
-          }`}
-        >
-          <span aria-hidden>{messageTone === "good" ? "✓ " : "↻ "}</span>
-          {message}
-        </div>
-      ) : null}
     </main>
   );
 }
