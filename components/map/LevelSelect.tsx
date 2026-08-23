@@ -105,6 +105,7 @@ export function LevelSelect() {
   const standRef = useRef(standIndex);
   standRef.current = standIndex;
 
+  const destinationIndex = selected ?? nextIndex;
   const nodes = useMemo<LevelNode[]>(() => {
     const list: LevelNode[] = track.map((l, i) => ({
       id: l.id,
@@ -112,6 +113,7 @@ export function LevelSelect() {
       unlocked: unlockAll || isLessonUnlocked(progress, l),
       done: progress.lessonsCompleted.includes(l.id),
       isNext: i === nextIndex,
+      isSelected: i === destinationIndex,
       isChat: false,
     }));
     list.push({
@@ -120,12 +122,13 @@ export function LevelSelect() {
       unlocked: unlockAll || gate.unlocked,
       done: false,
       isNext: false,
+      isSelected: track.length === destinationIndex,
       isChat: true,
     });
     return list;
-  }, [track, progress, nextIndex, gate.unlocked, unlockAll]);
+  }, [track, progress, nextIndex, gate.unlocked, unlockAll, destinationIndex]);
 
-  const activeIndex = selected ?? nextIndex;
+  const activeIndex = destinationIndex;
   const activeNode = nodes[activeIndex];
   const activeLesson = activeNode?.isChat ? null : track[activeIndex];
 
@@ -450,22 +453,35 @@ export function LevelSelect() {
             </button>
           </div>
 
-          <div
-            className={`efh-tint flex items-center gap-2 rounded-full px-4 py-1.5 shadow transition-opacity duration-300 ${
+          <section
+            aria-label="היעד שנבחר"
+            className={`efh-tint w-full max-w-md rounded-[1.5rem] border-4 border-white/80 px-5 py-4 shadow-lg transition-opacity duration-300 ${
               held ? "opacity-0" : "opacity-100"
             }`}
             style={activeLesson ? tintStyle(activeLesson.id) : undefined}
           >
-            <span aria-hidden className="text-xl">
-              {activeNode?.unlocked ? (activeNode.isChat ? "💬" : "📍") : "🔒"}
-            </span>
-            <span className="text-lg font-black">
-              {activeNode?.isChat ? "לדבר באנגלית" : (activeLesson?.titleHe ?? "")}
-            </span>
-            {activeNode?.done ? (
-              <StarRow earned={progress.stars[activeLesson?.id ?? ""] ?? 0} size={16} />
+            <div className="flex items-center justify-between gap-3">
+              <span className="rounded-full bg-white/75 px-3 py-1 text-sm font-black">
+                {activeNode?.isChat ? "יעד: שיחה" : `יעד: שלב ${activeIndex + 1}`}
+              </span>
+              {activeNode?.done ? (
+                <StarRow earned={progress.stars[activeLesson?.id ?? ""] ?? 0} size={18} />
+              ) : null}
+            </div>
+            <div className="mt-2 flex items-center gap-3">
+              <span aria-hidden className="text-3xl">
+                {activeNode?.unlocked ? (activeNode.isChat ? "💬" : "📍") : "🔒"}
+              </span>
+              <span className="text-xl font-black">
+                {activeNode?.isChat ? "לדבר באנגלית" : (activeLesson?.titleHe ?? "")}
+              </span>
+            </div>
+            {activeIndex !== standIndex ? (
+              <p className="mt-2 text-sm font-bold text-ink-soft">
+                המסלול מהעיפרון שלך ליעד מסומן על הדרך
+              </p>
             ) : null}
-          </div>
+          </section>
 
           {/*
             * `held` is the gate. The button is not merely ignored while the
