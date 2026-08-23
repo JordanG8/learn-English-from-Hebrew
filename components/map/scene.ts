@@ -155,9 +155,8 @@ const labelCache = new Map<string, THREE.CanvasTexture>();
 function labelTexture(
   text: string,
   color: string,
-  outline?: string,
 ): THREE.CanvasTexture {
-  const key = `${text}|${color}|${outline ?? ""}`;
+  const key = `${text}|${color}`;
   const hit = labelCache.get(key);
   if (hit) return hit;
   const s = 256; // the digits sit on a lit stone cap now; 128 read as mush
@@ -168,19 +167,6 @@ function labelTexture(
   g.font = `800 ${text.length > 2 ? 132 : 174}px system-ui, sans-serif`;
   g.textAlign = "center";
   g.textBaseline = "middle";
-  /*
-   * A dark outline is what makes ONE number colour work everywhere. Light
-   * blue against warm sandstone is already loud; against the green "next"
-   * cap it would be merely different. The ring of near-black around every
-   * glyph means the digit is legible on any cap we ever paint.
-   */
-  if (outline) {
-    g.strokeStyle = outline;
-    g.lineWidth = 14;
-    g.lineJoin = "round";
-    g.miterLimit = 2;
-    g.strokeText(text, s / 2, s / 2 + 8);
-  }
   g.fillStyle = color;
   g.fillText(text, s / 2, s / 2 + 8);
   const tex = new THREE.CanvasTexture(cv);
@@ -1195,19 +1181,13 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
      * unlocked pad gets its number, and the chat pad gets its glyph.
      */
     const face = node.isChat ? "💬" : node.unlocked ? node.label : "🔒";
-    /*
-     * ONE COLOUR FOR EVERY NUMBER, and it is nothing else in the scene.
-     * The road, the shaft and the cap are all warm masonry; a cool light blue
-     * is the far side of the wheel from all of it, so the digits separate from
-     * their own pedestal at any distance and in any light. The near-black
-     * outline (see labelTexture) carries it over the green "next" cap too.
-     */
-    const faceColor = node.unlocked ? "#7fe6ff" : "#eef1f4";
-    const faceOutline = node.unlocked ? "#0a2f43" : undefined;
+    // Level numbers stay plain, high-contrast white: no colour treatment or
+    // outline competes with the digit children are choosing.
+    const faceColor = node.unlocked ? "#ffffff" : "#eef1f4";
     const decal = new THREE.Mesh(
       new THREE.PlaneGeometry(1.9, 1.9),
       new THREE.MeshBasicMaterial({
-        map: labelTexture(face, faceColor, faceOutline),
+        map: labelTexture(face, faceColor),
         transparent: true,
         depthWrite: false,
       }),
@@ -1624,9 +1604,17 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     for (let i = 0; i < 18; i++) {
       const along = extent * 0.55 + i * 2.8;
       const base = nodePosition(along);
-      const off = (rnd() - 0.5) * 150;
+      /*
+       * Hills must read as a background silhouette, never as a prop on the
+       * track. Their old side offset could be almost zero; with a 34-unit
+       * footprint, hills generated at levels 78 and 89 covered the pads.
+       * Keep even the widest cone beyond the road, pedestal, and an 8-unit
+       * visual buffer on either verge.
+       */
+      const HILL_CLEAR = 52;
+      const off = (HILL_CLEAR + rnd() * 32) * (rnd() < 0.5 ? -1 : 1);
       const h = new THREE.Mesh(new THREE.ConeGeometry(16 + rnd() * 18, 9 + rnd() * 12, 5), hillMat);
-      h.position.set(base.x + SIDE.x * off - 30, -1.5, base.z + SIDE.z * off - 30);
+      h.position.set(base.x + SIDE.x * off, -1.5, base.z + SIDE.z * off);
       h.rotation.y = rnd() * Math.PI;
       scenery.add(h);
     }
