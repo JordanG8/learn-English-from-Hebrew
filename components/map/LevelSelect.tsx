@@ -64,6 +64,9 @@ export function LevelSelect() {
   // make rapid previous/next taps all calculate from the same stale render.
   const selectedRef = useRef<number | null>(null);
   selectedRef.current = selected;
+  // The world is mounted once; this ref keeps its click handler current as
+  // progress changes without making a changed callback rebuild WebGL.
+  const chooseLevelRef = useRef<(index: number) => void>(() => {});
   const [replay, setReplay] = useState(false);
   /*
    * The gate. "running" from the moment the road knows it owes a level-up
@@ -133,6 +136,7 @@ export function LevelSelect() {
     setSelected(safe);
     worldRef.current?.focus(safe);
   }, [nodes]);
+  chooseLevelRef.current = chooseLevel;
 
   /**
    * A dependable second way to travel. The 3D pads remain the direct, playful
@@ -193,7 +197,7 @@ export function LevelSelect() {
             // would move the spotlight out from under the landing.
             if (levelUpRef.current !== "idle") return;
             playSfx("tap");
-            chooseLevel(i);
+            chooseLevelRef.current(i);
           },
           onAdvance: (phase) => {
             if (phase === "launch") {
@@ -229,7 +233,7 @@ export function LevelSelect() {
       worldRef.current = null;
       setWorldReady(false);
     };
-  }, [ready, flat, chooseLevel]);
+  }, [ready, flat]);
 
   /* --- feed it the track ---------------------------------------------- */
   useEffect(() => {
