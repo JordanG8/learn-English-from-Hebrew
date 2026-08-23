@@ -2392,6 +2392,10 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       focusIndex = index;
       panWindowIndex = index;
       rememberFocus(index);
+      // A selection made after browsing becomes the new camera origin.
+      // Keeping the old browse offset would add it to the selected level
+      // and fling the camera beyond the end of the track.
+      panOffset = 0;
       panGoal = 0;
       panVel = 0;
       lastTouchAt = performance.now();
