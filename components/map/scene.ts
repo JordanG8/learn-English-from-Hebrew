@@ -36,6 +36,8 @@ export interface LevelNode {
   done: boolean;
   /** The one to play next: lit, raised, ringed. */
   isNext: boolean;
+  /** The destination currently framed by the camera. */
+  isSelected: boolean;
   /** Conversation mode gets a different pad. */
   isChat: boolean;
 }
@@ -1079,7 +1081,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     // modelsLoaded is last on purpose: it flips at most once, from false to
     // true, and every already-built pad's signature changes with it — that
     // one-time mismatch is what upgrades a fallback stack to the real column.
-    return [node.id, node.label, node.unlocked, node.done, node.isNext, node.isChat, modelsLoaded].join(
+    return [node.id, node.label, node.unlocked, node.done, node.isNext, node.isSelected, node.isChat, modelsLoaded].join(
       "|",
     );
   }
@@ -1224,10 +1226,15 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
      * a child has to find.
      */
     let ring: THREE.Mesh | null = null;
-    if (node.isNext) {
+    if (node.isNext || node.isSelected) {
+      const destination = node.isSelected && !node.isNext;
       ring = new THREE.Mesh(
         ringGeo,
-        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 }),
+        new THREE.MeshBasicMaterial({
+          color: destination ? 0x45dfff : 0xffffff,
+          transparent: true,
+          opacity: 0.9,
+        }),
       );
       ring.rotation.x = -Math.PI / 2;
       ring.position.y = PAD_TOP + 0.07;
@@ -1244,7 +1251,10 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       chevron.closePath();
       const mark = new THREE.Mesh(
         new THREE.ExtrudeGeometry(chevron, { depth: 0.22, bevelEnabled: false }),
-        new THREE.MeshLambertMaterial({ color: 0x2fbd63, emissive: 0x1d7d40 }),
+        new THREE.MeshLambertMaterial({
+          color: destination ? 0x45dfff : 0x2fbd63,
+          emissive: destination ? 0x16769a : 0x1d7d40,
+        }),
       );
       /*
        * Height is a readability decision, not a taste one: seen down an
@@ -1335,6 +1345,20 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   const player = pencil();
   player.scale.setScalar(1.85);
   scene.add(player);
+
+  // The route is a quiet visual bridge between where the pencil truly stands
+  // and the destination a child has chosen to inspect.
+  const routeGeo = new THREE.BufferGeometry();
+  const routeMat = new THREE.LineDashedMaterial({
+    color: 0x45dfff,
+    dashSize: 0.9,
+    gapSize: 0.45,
+    transparent: true,
+    opacity: 0.9,
+  });
+  const route = new THREE.Line(routeGeo, routeMat);
+  route.visible = false;
+  scene.add(route);
 
   // A soft contact shadow so the pencil never looks like it is floating, even
   // where the real shadow falls off the edge of the shadow camera.
@@ -1529,6 +1553,24 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
   }
 
   /** Incrementally reconcile the live pad windows instead of blanking them. */
+  function updateRoute(from: number, to: number) {
+    if (from === to) {
+      route.visible = false;
+      return;
+    }
+    const start = Math.min(from, to);
+    const end = Math.max(from, to);
+    const points: THREE.Vector3[] = [];
+    for (let i = start; i <= end; i++) {
+      const point = nodePosition(i);
+      point.y += PAD_TOP + 0.2;
+      points.push(point);
+    }
+    routeGeo.setFromPoints(points);
+    route.computeLineDistances();
+    route.visible = true;
+  }
+
   function refreshPads(now = performance.now()) {
     const desired = desiredPadIndices(now);
 
@@ -2342,6 +2384,7 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
     /** Hand the world the track. Safe to call again when progress changes. */
     setLevels(next: LevelNode[], focus: number, player: number) {
       levels = next;
+      updateRoute(player, focus);
       if (focusIndex !== focus) rememberFocus(focusIndex);
       focusIndex = focus;
       panWindowIndex = focus;
@@ -2453,6 +2496,8 @@ export function createWorld(canvas: HTMLCanvasElement, opts: WorldOptions) {
       });
       labelCache.forEach((t) => t.dispose());
       labelCache.clear();
+      routeGeo.dispose();
+      routeMat.dispose();
       renderer.dispose();
     },
   };
