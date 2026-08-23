@@ -3,6 +3,7 @@ import { Assistant } from "next/font/google";
 import "./globals.css";
 import { AppProviders } from "@/lib/app-providers";
 import { readServerVisit } from "@/lib/visitor-server";
+import { Analytics } from "@vercel/analytics/next";
 
 // Assistant: a Google Font drawn for Hebrew, with a matching Latin set — one
 // typeface reads naturally on both sides of the RTL/LTR split in this app.
@@ -43,6 +44,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         >
           {children}
         </AppProviders>
+        <Analytics />
       </body>
     </html>
   );
