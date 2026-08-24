@@ -405,14 +405,15 @@ export function LetterGroveScene({
           opacity: 0,
         });
         const spellCore = new THREE.Mesh(new THREE.IcosahedronGeometry(0.19, 1), spellMaterial);
+        const spellHaloMaterial = new THREE.MeshBasicMaterial({
+          color: 0xd7bdff,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+        });
         const spellHalo = new THREE.Mesh(
           new THREE.TorusGeometry(0.32, 0.035, 8, 24),
-          new THREE.MeshBasicMaterial({
-            color: 0xd7bdff,
-            transparent: true,
-            opacity: 0,
-            depthWrite: false,
-          }),
+          spellHaloMaterial,
         );
         spellHalo.rotation.x = Math.PI / 2;
         const spellLight = new THREE.PointLight(0xffe78c, 0, 4, 2);
@@ -610,8 +611,24 @@ export function LetterGroveScene({
 
           if (state.eventVersion !== lastEventVersion) {
             lastEventVersion = state.eventVersion;
-            if (state.event?.type === "answer.correct") {
+            if (state.event?.type === "spell.cast.correct") {
               castStartedAt = seconds;
+              const spellColour =
+                state.event.word === "TAP"
+                  ? 0xffd65c
+                  : state.event.word === "SIT"
+                    ? 0x62e5ff
+                    : 0xff8ee7;
+              const haloColour =
+                state.event.word === "TAP"
+                  ? 0xfff2a8
+                  : state.event.word === "SIT"
+                    ? 0xb7f6ff
+                    : 0xffc8f3;
+              spellMaterial.color.setHex(spellColour);
+              spellHaloMaterial.color.setHex(haloColour);
+              spellLight.color.setHex(spellColour);
+              impactMaterial.color.setHex(haloColour);
               if (!reduceMotion) {
                 heroAction = playAction(
                   heroMixer,
@@ -632,7 +649,7 @@ export function LetterGroveScene({
                 heroResumeAt = seconds + 0.78;
                 creatureResumeAt = seconds + 0.78;
               }
-            } else if (state.event?.type === "answer.incorrect" && !reduceMotion) {
+            } else if (state.event?.type === "spell.cast.incorrect" && !reduceMotion) {
               creatureAction = playAction(
                 creatureMixer,
                 assets.creature.animations,
@@ -709,8 +726,7 @@ export function LetterGroveScene({
             spellGroup.position.copy(spellPosition);
             spellGroup.scale.setScalar(0.75 + Math.sin(castProgress * Math.PI) * 0.7);
             spellMaterial.opacity = 1 - castProgress * 0.35;
-            (spellHalo.material as InstanceType<typeof THREE.MeshBasicMaterial>).opacity =
-              0.8 - castProgress * 0.35;
+            spellHaloMaterial.opacity = 0.8 - castProgress * 0.35;
             spellLight.intensity = 3.8 * (1 - castProgress * 0.55);
           }
 
@@ -778,7 +794,7 @@ export function LetterGroveScene({
   return (
     <section
       className="absolute inset-0 overflow-hidden bg-[#72b6ad]"
-      aria-label={`חורשת האותיות. ${chargedRunes} מתוך ${LETTER_GROVE_SLICE.questionCount} רונות טעונות.`}
+      aria-label={`חורשת האותיות. ${chargedRunes} מתוך ${LETTER_GROVE_SLICE.spellCount} רונות טעונות.`}
     >
       <div ref={host} className={mode === "webgl" ? "h-full w-full" : "hidden"} />
 
@@ -792,7 +808,7 @@ export function LetterGroveScene({
             {complete ? "✨" : "•‿•"}
           </div>
           <div className="absolute top-[52%] flex gap-3" aria-hidden>
-            {Array.from({ length: LETTER_GROVE_SLICE.questionCount }, (_, index) => (
+            {Array.from({ length: LETTER_GROVE_SLICE.spellCount }, (_, index) => (
               <span
                 key={index}
                 className={`h-9 w-9 rotate-45 rounded-md border-4 ${
@@ -818,7 +834,7 @@ export function LetterGroveScene({
       <p className="sr-only" aria-live="polite">
         {complete
           ? "הערפל התפזר והשרביט הופיע"
-          : `נטענו ${chargedRunes} מתוך ${LETTER_GROVE_SLICE.questionCount} רונות`}
+          : `נטענו ${chargedRunes} מתוך ${LETTER_GROVE_SLICE.spellCount} רונות`}
       </p>
     </section>
   );

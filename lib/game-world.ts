@@ -23,12 +23,12 @@ export const WORLD_ZONES: readonly WorldZone[] = [
   {
     id: "letter-grove",
     titleHe: "חורשת האותיות",
-    subtitleHe: "לומדים צלילים ומדליקים רונות",
+    subtitleHe: "מחברים אותיות למילות קסם ומדליקים רונות",
     curriculum: "letters",
     colour: "#7c5cff",
     sky: "#dce9ff",
     ground: "#8ccf87",
-    monster: { nameHe: "ערפל הבלבול", emoji: "👾", weaknessHe: "הצליל הנכון" },
+    monster: { nameHe: "ערפל הבלבול", emoji: "👾", weaknessHe: "מילה שנבנתה נכון" },
     reward: { nameHe: "שרביט רונות", emoji: "🪄" },
   },
   {
@@ -77,8 +77,8 @@ export const LETTER_GROVE_SLICE = {
   id: "letter-grove-first-rune",
   nextEncounterId: "letter-grove-sun-gate",
   zoneId: "letter-grove",
-  letter: "S",
-  questionCount: 3,
+  requiredLetters: ["S", "A", "T", "P", "I", "N"],
+  spellCount: 3,
   creature: {
     nameHe: "פּוֹפּ",
     descriptionHe: "שומר רונות קטן שנתקע בתוך ערפל הבלבול",

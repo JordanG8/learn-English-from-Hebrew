@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import { AdventureTrail } from "@/components/adventure/AdventureTrail";
+import { AdventureResume } from "@/components/adventure/AdventureResume";
 
 export const metadata: Metadata = {
-  title: "שביל ההרפתקה · חורשת האותיות",
-  description: "בוחרים משימה, מפעילים אנגלית, ואוספים ציוד לגיבור",
+  title: "ממשיכים במסע",
+  description: "המסע מחזיר אתכם למקום הבא שנפתח בעולם האנגלית",
 };
 
 export default function AdventurePage() {
-  return <AdventureTrail />;
+  return <AdventureResume />;
 }
-
