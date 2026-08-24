@@ -104,6 +104,7 @@ export function SpeakPractice() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [problemHe, setProblemHe] = useState<string | null>(null);
+  const [showMicNotice, setShowMicNotice] = useState(false);
   /** Session only, and gone on unmount. See rule 2 in the file comment. */
   const [said, setSaid] = useState(0);
   const [tries, setTries] = useState(0);
@@ -211,6 +212,11 @@ export function SpeakPractice() {
       TAKE_MS,
     );
   }, [recorder]);
+
+  const askToRecord = useCallback(() => {
+    if (recorder.error || !recorder.supported) return;
+    setShowMicNotice(true);
+  }, [recorder.error, recorder.supported]);
 
   const next = useCallback(() => {
     clearAutoStop();
@@ -345,7 +351,7 @@ export function SpeakPractice() {
           <>
             <button
               type="button"
-              onClick={() => void startTake()}
+              onClick={askToRecord}
               disabled={Boolean(blocked)}
               className="btn-primary flex w-full items-center justify-center gap-3 disabled:opacity-40"
             >
@@ -365,7 +371,7 @@ export function SpeakPractice() {
         ) : (
           <button
             type="button"
-            onClick={() => void (recording ? finishTake() : startTake())}
+            onClick={() => void (recording ? finishTake() : askToRecord())}
             disabled={Boolean(blocked) || checking}
             aria-label={recording ? "סיימתי" : "אמרו את המילה"}
             className="grid h-36 w-36 place-items-center rounded-full text-xl font-black text-white shadow-[0_6px_0_rgba(0,0,0,0.18)] transition-transform active:translate-y-1 disabled:opacity-40"
@@ -382,6 +388,27 @@ export function SpeakPractice() {
           </button>
         )}
       </div>
+
+      {showMicNotice ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/35 p-5" role="dialog" aria-modal="true" aria-labelledby="mic-notice-title">
+          <div className="w-full max-w-md rounded-[var(--radius-kid)] bg-card p-6 text-center shadow-xl">
+            <span aria-hidden className="text-5xl">🎤</span>
+            <h2 id="mic-notice-title" className="mt-3 text-2xl font-black">לפני שמדברים</h2>
+            <p className="mt-3 text-lg text-ink-soft">
+              המיקרופון מקשיב רק למילה שאתם אומרים, כדי לתת לכם תרגול. ההקלטה לא נשמרת.
+            </p>
+            <p className="mt-2 text-sm font-bold text-ink-soft">אפשר לבקש ממבוגר לעזור לפני שמאשרים את המיקרופון.</p>
+            <div className="mt-5 flex flex-col gap-3">
+              <button type="button" className="btn-primary" onClick={() => { setShowMicNotice(false); void startTake(); }}>
+                מוכנים לדבר
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => setShowMicNotice(false)}>
+                רק להקשיב למילה
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

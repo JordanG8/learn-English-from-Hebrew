@@ -33,7 +33,7 @@ import {
 import { useProgress } from "@/lib/progress-context";
 import { planMixedReview } from "@/lib/srs";
 import { buildReviewLesson, buildWarmupSteps, skillsForStep } from "@/lib/curriculum";
-import { starsFor, completionHeadlineHe } from "@/lib/reward";
+import { starsFor, completionHeadlineHe, encouragement, praise } from "@/lib/reward";
 import type { Stars } from "@/lib/reward";
 import { playSfx } from "@/lib/audio";
 import {
@@ -102,6 +102,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
   const [attemptsHere, setAttemptsHere] = useState(0);
   const [wrongTotal, setWrongTotal] = useState(0);
   const [celebrating, setCelebrating] = useState(false);
+  const [feedbackHe, setFeedbackHe] = useState<string | null>(null);
   const settled = useRef(false);
   // When the current step appeared. Latency is half of the mastery
   // criterion (automaticity) — see MASTERY_MEDIAN_LATENCY_MS.
@@ -114,6 +115,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
     setAttemptsHere(0);
     setIndex((i) => i + 1);
     setPhase("playing");
+    setFeedbackHe(null);
     shownAt.current = Date.now();
   }, []);
 
@@ -133,6 +135,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
         // build-word and build-sentence own their own pacing: they show the
         // hero celebration and call onAdvance themselves.
         if (step.type === "build-word" || step.type === "build-sentence") return;
+        setFeedbackHe(`✅ ${praise(index)}`);
         setPhase("feedback");
         window.setTimeout(advance, 650);
         return;
@@ -140,6 +143,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
 
       setAttemptsHere((current) => current + 1);
       setWrongTotal((w) => w + 1);
+      setFeedbackHe(`💡 ${encouragement(index + attemptsHere)}. נסו שוב — אפשר גם לשמוע את השאלה.`);
 
       if (
         attemptsHere + 1 >= MAX_ATTEMPTS_PER_STEP &&
@@ -149,6 +153,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
         // Never leave a child stuck in a failure loop. Move on and let the
         // SRS bring this skill back later.
         setPhase("feedback");
+        setFeedbackHe("💡 נעבור הלאה, ונחזור לזה שוב בהמשך.");
         window.setTimeout(advance, 1600);
       }
     },
@@ -196,6 +201,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
     setIndex(0);
     setWrongTotal(0);
     setAttemptsHere(0);
+    setFeedbackHe(null);
     setPhase("playing");
     shownAt.current = Date.now();
   }, []);
@@ -232,6 +238,9 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
           {completionHeadlineHe(stars)}
         </h1>
         <p className="text-center text-xl text-ink-soft">{lesson.titleHe}</p>
+        <p className="max-w-sm text-center text-lg font-bold text-ink-soft">
+          סיימתם! במסלול מחכה לכם השיעור הבא.
+        </p>
         <div className="flex w-full max-w-sm flex-col gap-3">
           <BigButton icon="🛣️" onClick={goNext}>
             למסלול
@@ -273,6 +282,13 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
       <ScreenHeader title={lesson.titleHe} onBack={() => router.push("/map")} />
       <div className="px-4">
         <StepBar current={index} total={steps.length} />
+      </div>
+      <div className="min-h-12 px-4 pt-2" aria-live="polite" role="status">
+        {feedbackHe ? (
+          <p className="mx-auto max-w-md rounded-2xl bg-white/80 px-4 py-2 text-center text-lg font-black shadow-sm">
+            {feedbackHe}
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-1 flex-col gap-4 p-4">

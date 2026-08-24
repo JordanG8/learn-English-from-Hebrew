@@ -293,7 +293,9 @@ export function LevelSelect() {
 
   const finishTutorial = useCallback(() => {
     setOnboarded(true);
-    completeLesson(TUTORIAL_LESSON.id, 3);
+    // The walkthrough explains the map; it is not a lesson the child has
+    // completed. Starting at three stars made the first real reward unclear.
+    completeLesson(TUTORIAL_LESSON.id, 0);
     setReplay(false);
   }, [setOnboarded, completeLesson]);
 
@@ -346,10 +348,11 @@ export function LevelSelect() {
             type="button"
             disabled={held}
             onClick={() => router.push("/")}
-            aria-label="חזרה"
-            className="grid h-14 w-14 place-items-center rounded-2xl border-[3px] border-white/70 bg-card/90 text-2xl shadow"
+            aria-label="חזרה לבית"
+            className="flex h-14 items-center gap-1 rounded-2xl border-[3px] border-white/70 bg-card/90 px-3 text-base font-black shadow"
           >
             <span aria-hidden>→</span>
+            <span>בית</span>
           </button>
 
           <div className="flex items-center gap-2">
@@ -476,6 +479,15 @@ export function LevelSelect() {
                 {activeNode?.isChat ? "לדבר באנגלית" : (activeLesson?.titleHe ?? "")}
               </span>
             </div>
+            <p className="mt-2 text-sm font-bold text-ink-soft">
+              {activeIndex < 26
+                ? "מסלול האותיות"
+                : activeIndex < 51
+                  ? "מילים ראשונות"
+                  : activeIndex < 76
+                    ? "בונים מילים"
+                    : "משפטים ושיחה"}
+            </p>
             {activeIndex !== standIndex ? (
               <p className="mt-2 text-sm font-bold text-ink-soft">
                 המסלול מהעיפרון שלך ליעד מסומן על הדרך
@@ -499,7 +511,7 @@ export function LevelSelect() {
             <span aria-hidden className="text-4xl leading-none">
               {held ? "✏️" : canPlay ? "▶️" : "🔒"}
             </span>
-            <span>{held ? "רגע…" : canPlay ? "שחק" : "נעול"}</span>
+            <span>{held ? "פותחים את השיעור…" : canPlay ? "בואו נלמד" : "נעול"}</span>
           </button>
         </div>
       </main>
