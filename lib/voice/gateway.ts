@@ -15,10 +15,11 @@
  * written down here so the next person does not have to read a bundle to
  * find them.
  *
- * WHY NOT THE AI SDK: `experimental_generateSpeech` / `experimental_transcribe`
- * need `ai` >= 7 with `@ai-sdk/gateway` >= 4, and this app is on `ai` 5 for
- * conversation mode. Two major upgrades to reach two JSON endpoints is a
- * bigger, riskier change than the endpoints. See docs/voice.md.
+ * WHY THESE HELPERS STILL EXIST WITH AI SDK 7: the cached speech and
+ * transcription paths predate the SDK's audio surface and already share a
+ * compact, well-tested HTTP contract. Letter Grove's realtime narration uses
+ * the official SDK; these helpers remain the single credential source for the
+ * existing raw endpoints until those paths are migrated deliberately.
  *
  * THE PRICE OF NOT USING THE SDK is that OIDC has to be resolved by hand, and
  * that is the one part of this that is genuinely surprising — see

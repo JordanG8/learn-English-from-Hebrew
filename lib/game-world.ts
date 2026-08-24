@@ -72,3 +72,20 @@ export const AVATAR_STYLES = [
   { id: "aqua", labelHe: "טורקיז", colour: "#24a9b5" },
 ] as const;
 
+/** The deliberately tiny contract for the first production-like encounter. */
+export const LETTER_GROVE_SLICE = {
+  id: "letter-grove-first-rune",
+  nextEncounterId: "letter-grove-sun-gate",
+  zoneId: "letter-grove",
+  letter: "S",
+  questionCount: 3,
+  creature: {
+    nameHe: "פּוֹפּ",
+    descriptionHe: "שומר רונות קטן שנתקע בתוך ערפל הבלבול",
+  },
+  reward: {
+    id: "rune-wand",
+    nameHe: "שרביט הרונה הסגולה",
+    emoji: "🪄",
+  },
+} as const;

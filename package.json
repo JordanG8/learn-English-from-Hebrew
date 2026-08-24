@@ -2,6 +2,9 @@
   "name": "learn-english-from-hebrew",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,14 +13,16 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/gateway": "^4.0.63",
+    "@ai-sdk/react": "^4.0.81",
     "@types/three": "^0.185.4",
     "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.8.0",
     "@vercel/oidc": "^3.8.5",
-    "ai": "^5.0.26",
+    "ai": "^7.0.78",
     "next": "15.5.23",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "react": "^19.1.2",
+    "react-dom": "^19.1.2",
     "three": "^0.185.1",
     "zod": "^3.25.76"
   },

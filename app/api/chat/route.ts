@@ -128,10 +128,10 @@ export async function POST(req: Request): Promise<NextResponse<ChatOk | ChatDegr
 
   const baseSystem = systemPrompt({ lexicon, letters, newWordBudget: budget });
 
-  async function ask(system: string): Promise<string> {
+  async function ask(instructions: string): Promise<string> {
     const result = await generateText({
       model: CHAT_MODEL,
-      system,
+      instructions,
       messages: history,
       temperature: 0.7,
       maxRetries: 1,

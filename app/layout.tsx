@@ -1,18 +1,18 @@
 import type { Metadata, Viewport } from "next";
-import { Assistant } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { AppProviders } from "@/lib/app-providers";
 import { readServerVisit } from "@/lib/visitor-server";
 import { Analytics } from "@vercel/analytics/next";
 
-// Assistant: a Google Font drawn for Hebrew, with a matching Latin set — one
-// typeface reads naturally on both sides of the RTL/LTR split in this app.
-// next/font self-hosts it at build time, so there is no runtime dependency on
-// fonts.googleapis.com and no layout-shift flash of a fallback face.
-const assistant = Assistant({
-  subsets: ["hebrew", "latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-assistant",
+// Rubik has purpose-built Hebrew (including niqqud positioning) and Latin.
+// Keep the OFL font in-repo so local previews and Vercel builds never depend
+// on a live Google Fonts fetch.
+const rubik = localFont({
+  src: "./fonts/Rubik-Variable.ttf",
+  weight: "300 900",
+  style: "normal",
+  variable: "--font-rubik",
   display: "swap",
 });
 
@@ -24,9 +24,6 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  // Kids rest palms on tablets; pinch-zoom mid-lesson breaks the keyboard layout.
-  maximumScale: 1,
-  userScalable: false,
   themeColor: "#f7f7fb",
 };
 
@@ -37,7 +34,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const visit = await readServerVisit();
 
   return (
-    <html lang="he" dir="rtl" className={assistant.variable}>
+    <html lang="he" dir="rtl" className={rubik.variable}>
       <body className="min-h-dvh antialiased">
         <AppProviders
           serverVisit={{ cookie: visit.cookie, currentIpHash: visit.currentIpHash }}

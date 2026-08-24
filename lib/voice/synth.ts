@@ -42,15 +42,12 @@
  * is then served from the store and the CDN. The whole catalogue is a few
  * thousand characters — cents at list price.
  *
- * WHY A RAW `fetch` AND NOT THE AI SDK
- * ------------------------------------
- * `experimental_generateSpeech` needs `ai` >= 7.0.31 with
- * `@ai-sdk/gateway` >= 4.0.23; this app is on `ai` 5, which the conversation
- * route depends on. Upgrading two majors to reach one endpoint is a much
- * bigger change than the endpoint itself, and the gateway's speech route is a
- * plain JSON POST. When `ai` is next upgraded, this file becomes a call to
- * `generateSpeech({ model: gateway.speechModel(SYNTH_MODEL), ... })` and
- * nothing else moves — the shape below is deliberately the same shape.
+ * WHY THIS STILL USES A RAW `fetch`
+ * ---------------------------------
+ * The app now uses AI SDK 7 for its realtime cutscene voice. This older,
+ * cache-backed catalogue path remains on the Gateway's small JSON speech
+ * contract for now; keeping it stable avoids changing every pronunciation
+ * fallback in the same release as the realtime feature.
  *
  * NOTHING HERE THROWS AT THE CALLER. A missing credential, an upstream 429, a
  * timeout — all resolve to a reason code, because every one of them means the

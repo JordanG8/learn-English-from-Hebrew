@@ -356,6 +356,15 @@ export function LevelSelect() {
           </button>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={held}
+              onClick={() => router.push("/adventure")}
+              aria-label="שביל ההרפתקה"
+              className="grid h-14 w-14 place-items-center rounded-2xl border-[3px] border-white/70 bg-card/90 text-2xl shadow"
+            >
+              <span aria-hidden>🧭</span>
+            </button>
             {/* Speaking practice. An icon in the secondary cluster, never a
                 second primary action: the road has exactly one of those. */}
             <button

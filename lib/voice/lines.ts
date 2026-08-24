@@ -28,6 +28,7 @@ import { LETTERS } from "@/lib/curriculum/alphabet";
 import { WORDS } from "@/lib/curriculum/words";
 import { SENTENCES } from "@/lib/curriculum/sentences";
 import { LESSONS, TUTORIAL_LESSON } from "@/lib/curriculum/lessons";
+import { LETTER_GROVE_CUTSCENE_BEATS } from "@/lib/letter-grove-cutscene";
 import type { TutorialStep } from "@/lib/types";
 
 export type VoiceGroupId =
@@ -145,6 +146,21 @@ function tutorialLines(which: "walkthrough" | "lesson"): VoiceLine[] {
   return out;
 }
 
+function letterGroveCutsceneLines(): VoiceLine[] {
+  return LETTER_GROVE_CUTSCENE_BEATS.map((beat, index) => ({
+    id: narrationLineId(beat.stepId),
+    group: "narration" as const,
+    lang: "he" as const,
+    text: beat.textHe,
+    directionHe: `פתיח חורשת האותיות · ${beat.speakerLabelHe} — חם, סיפורי וברור לילדים`,
+    // The server-side Gateway synthesis route reads `text` directly. Browser
+    // speech stays disabled for Hebrew so a weak device voice never replaces
+    // the carefully directed narration.
+    fallback: null,
+    order: 100 + index,
+  }));
+}
+
 function letterNameLines(): VoiceLine[] {
   return LETTERS.map((d, i) => ({
     id: letterNameLineId(d.letter),
@@ -218,7 +234,7 @@ export const VOICE_GROUPS: readonly VoiceGroup[] = [
     id: "narration",
     titleHe: "ההדרכה",
     blurbHe: "מה שהילד שומע בפעם הראשונה שהוא נכנס. בעברית.",
-    lines: tutorialLines("walkthrough"),
+    lines: [...tutorialLines("walkthrough"), ...letterGroveCutsceneLines()],
   },
   {
     id: "letter-name",

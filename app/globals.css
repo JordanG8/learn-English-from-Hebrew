@@ -60,9 +60,9 @@
 
   --radius-kid: 1.5rem;
   /* Loaded via next/font/google in app/layout.tsx (self-hosted, no runtime
-     fetch to fonts.googleapis.com). --font-assistant is set on <html>. */
-  --font-hebrew: var(--font-assistant), "Assistant", system-ui, sans-serif;
-  --font-latin: var(--font-assistant), "Assistant", system-ui, sans-serif;
+     fetch to fonts.googleapis.com). --font-rubik is set on <html>. */
+  --font-hebrew: var(--font-rubik), "Rubik", system-ui, sans-serif;
+  --font-latin: var(--font-rubik), "Rubik", system-ui, sans-serif;
 }
 
 :root {
