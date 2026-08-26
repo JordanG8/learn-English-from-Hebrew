@@ -128,17 +128,20 @@ function tone(freq: number, startAt: number, durS: number, gain = 0.14): void {
  * to be audible in the first fifty milliseconds or the reward reads as the
  * same event as a tap.
  *
- * THERE ARE THREE SIZES OF REWARD IN THIS APP, and they must sound like three
+ * THERE ARE FOUR SIZES OF REWARD IN THIS APP, and they must sound like four
  * different sizes or the biggest one is worth nothing:
  *
- *   1. `celebrate` — a word or a sentence finished INSIDE a lesson. A short
- *      arpeggio on plain tones. It happens many times a level, so it stays
- *      small on purpose.
- *   2. `lesson-clear` — the level is beaten and the stars screen is up. This
- *      is the sound that used to be reserved for the road, promoted: whoosh,
- *      thump, crack and a bell fanfare. It is a real event.
- *   3. `level-up` — the pencil lands on the next pad. This one is a piece of
- *      music with a brass section in it, and nothing else in the app is
+ *   1. `tap` and `letter-lands` — a key was pressed, a letter landed in a
+ *      slot. Beeps, and that is the correct size for them.
+ *   2. `correct` — A QUESTION ANSWERED RIGHT. This is the one a child hears
+ *      most, and it used to be two tones, which is the size of a beep for the
+ *      thing the whole lesson is made of. It now plays `fanfare()`, on a
+ *      short tail so consecutive right answers do not pile up.
+ *   3. `celebrate` — a whole word or sentence built. The same fanfare with
+ *      its full tail, because the payoff step has earned the ring-out.
+ *   4. `lesson-clear` and `level-up` — THE LEVEL IS BEATEN: the stars screen,
+ *      and the pencil landing on the next pad. Both play `score()`, which is
+ *      a piece of music with a brass section in it, and nothing smaller is
  *      allowed to sound like it.
  *
  * The layers below are the vocabulary all three are written in, and still with
@@ -435,14 +438,98 @@ function brass(freq: number, startAt: number, durS: number, gain = 0.13): void {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* The two rewards, written once                                        */
+/* ------------------------------------------------------------------ */
+/*
+ * Both of these used to be spelled out inline in `playSfx`, which made them
+ * look like properties of the events that happened to play them. They are not:
+ * they are the app's two reward sounds, and WHICH EVENT GETS WHICH is a
+ * product decision that has already moved once. Keeping them as named pieces
+ * is what makes moving them a one-line change instead of a transplant.
+ */
+
+/**
+ * THE FANFARE — weight, a crack, and a major arpeggio on bells.
+ *
+ * `tail` scales how long it rings out. A right answer is followed by the next
+ * question about half a second later, so its fanfare is cut short; a finished
+ * word has a hero animation to ring under, so it gets the whole thing.
+ */
+function fanfare(tail = 1): void {
+  thump(0, 0.42 * tail + 0.13);
+  whoosh(0, 0.14, 5200, 900, 0.16, "highpass");
+  // A riser under the arpeggio, pointing at whatever is about to appear.
+  whoosh(0.04, 0.5 * tail, 320, 3600, 0.07);
+  // C major, up and over the octave, with the fifth held underneath so the
+  // last note lands on a chord and not on a beep.
+  const ARP = [523.25, 659.25, 783.99, 1046.5];
+  ARP.forEach((f, i) => bell(f, 0.06 + i * 0.075, (0.55 + i * 0.12) * tail, 0.17));
+  bell(1567.98, 0.36, 1.5 * tail, 0.1);
+  bell(2093, 0.42, 1.3 * tail, 0.055);
+  swell(261.63, 0.05, 1.25 * tail, 0.06);
+  swell(392, 0.05, 1.25 * tail, 0.045);
+}
+
+/**
+ * THE SCORE. Beating a level is the largest thing that happens in this app and
+ * it happens perhaps fifty times in the whole track, so it is written out as
+ * music — in C major, in five beats, with an actual brass section — rather
+ * than assembled out of effects.
+ *
+ * Times are seconds from the downbeat. On the road that downbeat is the frame
+ * the pencil hits the pad, and the piece runs a little past the end of the
+ * cinematic on purpose: the tail is what the child hears while the camera
+ * glides on to the level they just opened.
+ */
+function score(): void {
+  // 1. THE IMPACT. The landing, and the orchestra hitting with it.
+  thump(0, 0.5);
+  crash(0, 0.15, 1.7);
+  timpani(65.41, 0, 0.38); // C2
+  timpani(98.0, 0.2, 0.24); // G2
+
+  // 2. THE CALL. Three notes straight up the triad — the part a child will be
+  //    humming on the way to the next level.
+  brass(392.0, 0.0, 0.17, 0.12); // G4
+  brass(523.25, 0.15, 0.17, 0.13); // C5
+  brass(659.25, 0.3, 0.17, 0.14); // E5
+
+  // 3. THE ANSWER. The top note held, with the section arriving under it.
+  brass(783.99, 0.45, 0.6, 0.15); // G5, the melody
+  brass(523.25, 0.45, 0.6, 0.075); // C5
+  brass(659.25, 0.45, 0.6, 0.06); // E5
+  swell(130.81, 0.45, 1.05, 0.05); // C3, the floor
+  timpani(98.0, 0.72, 0.18);
+
+  // 4. THE RUN. G, A, B — a ladder, so the last chord is arrived at and not
+  //    merely played.
+  brass(783.99, 1.06, 0.12, 0.12);
+  brass(880.0, 1.18, 0.12, 0.12);
+  brass(987.77, 1.3, 0.12, 0.13);
+
+  // 5. THE CHORD. Everything at once, then bells over the top of it.
+  brass(1046.5, 1.42, 1.25, 0.14); // C6
+  brass(783.99, 1.42, 1.25, 0.07);
+  brass(659.25, 1.42, 1.25, 0.055);
+  brass(523.25, 1.42, 1.25, 0.06);
+  timpani(65.41, 1.42, 0.36);
+  timpani(65.41, 1.63, 0.2);
+  crash(1.42, 0.13, 2.0);
+  swell(130.81, 1.42, 1.5, 0.055);
+  swell(196.0, 1.42, 1.5, 0.04);
+  bell(2093.0, 1.5, 1.3, 0.07);
+  bell(3135.96, 1.62, 1.1, 0.038);
+}
+
 export type Sfx =
   | "tap"
   | "correct"
   | "wrong"
   | "letter-lands"
-  /** A word or a sentence finished inside a lesson. The small one. */
+  /** A word or a sentence finished inside a lesson. The fanfare, rung out. */
   | "celebrate"
-  /** The lesson is beaten and the stars are up. The middle one. */
+  /** The lesson is beaten and the stars are up. The score. */
   | "lesson-clear"
   /** The pencil leaves the pad. Pairs with "level-up". */
   | "hop-launch"
@@ -460,8 +547,10 @@ export function playSfx(name: Sfx): void {
       tone(880, 0, 0.09, 0.1);
       break;
     case "correct":
-      tone(784, 0, 0.1);
-      tone(1046, 0.09, 0.16);
+      // EVERY QUESTION ANSWERED RIGHT. The most-heard sound in the app, and
+      // the one worth spending the most on: the next question is ~650ms away,
+      // so the fanfare is cut short rather than made smaller.
+      fanfare(0.55);
       break;
     case "wrong":
       // Deliberately soft and low, not a buzzer. A 7-year-old should hear
@@ -469,7 +558,9 @@ export function playSfx(name: Sfx): void {
       tone(311, 0, 0.14, 0.07);
       break;
     case "celebrate":
-      [523, 659, 784, 1046, 1318].forEach((f, i) => tone(f, i * 0.1, 0.34, 0.13));
+      // A whole word or sentence built. Same sound as a right answer, allowed
+      // to ring out under the hero animation that follows it.
+      fanfare();
       break;
     case "hop-launch":
       // Rising, so it points at the landing that is about to happen.
@@ -477,79 +568,14 @@ export function playSfx(name: Sfx): void {
       tone(392, 0, 0.1, 0.06);
       tone(587, 0.07, 0.12, 0.06);
       break;
-    case "lesson-clear": {
-      /*
-       * FINISHING A LESSON is the moment the stars screen appears, and it used
-       * to share `celebrate` with "you typed the last letter of CAT" — the
-       * same five tones for a step and for the whole level. So it takes over
-       * the sound the road used to own: weight, a crack, and a bell fanfare.
-       * The road, in turn, has moved up to the score below.
-       */
-      thump(0, 0.55);
-      whoosh(0, 0.14, 5200, 900, 0.16, "highpass");
-      // A riser under the arpeggio, pointing at the stars as they land.
-      whoosh(0.04, 0.5, 320, 3600, 0.07);
-      // C major, up and over the octave, with the fifth held underneath so the
-      // last note lands on a chord and not on a beep.
-      const ARP = [523.25, 659.25, 783.99, 1046.5];
-      ARP.forEach((f, i) => bell(f, 0.06 + i * 0.075, 0.55 + i * 0.12, 0.17));
-      bell(1567.98, 0.36, 1.5, 0.1);
-      bell(2093, 0.42, 1.3, 0.055);
-      swell(261.63, 0.05, 1.25, 0.06);
-      swell(392, 0.05, 1.25, 0.045);
+    case "lesson-clear":
+      // The stars screen. Beating a level and watching the pencil arrive are
+      // the same achievement staged twice, so they get the same music.
+      score();
       break;
-    }
-    case "level-up": {
-      /*
-       * THE SCORE. Beating a level is the largest thing that happens in this
-       * app and it happens perhaps fifty times in the whole track, so it is
-       * written out as music — in C major, in five beats, with an actual
-       * brass section — rather than assembled out of effects.
-       *
-       * Times are seconds from the frame the pencil hits the pad. It runs a
-       * little past the end of the cinematic on purpose: the tail is what the
-       * child hears while the camera glides on to the level they just opened.
-       */
-
-      // 1. THE IMPACT. The landing, and the orchestra hitting with it.
-      thump(0, 0.5);
-      crash(0, 0.15, 1.7);
-      timpani(65.41, 0, 0.38); // C2
-      timpani(98.0, 0.2, 0.24); // G2
-
-      // 2. THE CALL. Three notes straight up the triad — the part a child
-      //    will be humming on the way to the next level.
-      brass(392.0, 0.0, 0.17, 0.12); // G4
-      brass(523.25, 0.15, 0.17, 0.13); // C5
-      brass(659.25, 0.3, 0.17, 0.14); // E5
-
-      // 3. THE ANSWER. The top note held, with the section arriving under it.
-      brass(783.99, 0.45, 0.6, 0.15); // G5, the melody
-      brass(523.25, 0.45, 0.6, 0.075); // C5
-      brass(659.25, 0.45, 0.6, 0.06); // E5
-      swell(130.81, 0.45, 1.05, 0.05); // C3, the floor
-      timpani(98.0, 0.72, 0.18);
-
-      // 4. THE RUN. G, A, B — a ladder, so the last chord is arrived at and
-      //    not merely played.
-      brass(783.99, 1.06, 0.12, 0.12);
-      brass(880.0, 1.18, 0.12, 0.12);
-      brass(987.77, 1.3, 0.12, 0.13);
-
-      // 5. THE CHORD. Everything at once, then bells over the top of it.
-      brass(1046.5, 1.42, 1.25, 0.14); // C6
-      brass(783.99, 1.42, 1.25, 0.07);
-      brass(659.25, 1.42, 1.25, 0.055);
-      brass(523.25, 1.42, 1.25, 0.06);
-      timpani(65.41, 1.42, 0.36);
-      timpani(65.41, 1.63, 0.2);
-      crash(1.42, 0.13, 2.0);
-      swell(130.81, 1.42, 1.5, 0.055);
-      swell(196.0, 1.42, 1.5, 0.04);
-      bell(2093.0, 1.5, 1.3, 0.07);
-      bell(3135.96, 1.62, 1.1, 0.038);
+    case "level-up":
+      score();
       break;
-    }
   }
 }
 

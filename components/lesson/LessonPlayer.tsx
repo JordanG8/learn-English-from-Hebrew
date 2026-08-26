@@ -208,8 +208,9 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
     });
     // Finished, so there is nothing left to come back to.
     clearResume(lesson.id);
-    // The level is beaten. This is the app's middle-sized reward, and it is
-    // deliberately not the same sound as finishing a word inside the lesson.
+    // The level is beaten and the stars are about to land. This is the app's
+    // largest reward — the full score — and nothing inside a lesson is
+    // allowed to sound like it.
     playSfx("lesson-clear");
     setCelebrating(true);
     setPhase("done");
