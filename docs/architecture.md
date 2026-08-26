@@ -31,6 +31,8 @@ lib/
   pedagogy.ts           EVERY pedagogical number, with confidence tags
   skills.ts             SkillId encoding — the only place ids are parsed
   progress.ts           localStorage: load / coerce / migrate / pure updates
+  lesson-resume.ts      the bookmark inside a half-finished lesson
+  advancement.ts        which pad the pencil has been SEEN standing on
   srs.ts                THE SPINE: grading, due-ness, mastery, the chat gate
   reward.ts             stars, Hebrew praise, the anti-overjustification rules
   audio.ts              WebAudio SFX + speech: recording, then model, then TTS
@@ -139,6 +141,27 @@ writer.
 uses a fresh profile with `ready === false`. Screens render a stable skeleton
 until `ready` is true. Skipping this both breaks hydration and shows a
 returning child "0 stars" for a frame.
+
+### Beside Progress: four notes about the device
+
+`Progress` is the child's record — versioned, migrated, and the thing worth
+protecting. Four smaller keys sit next to it and deliberately stay out of it,
+because they describe the tablet rather than the learner, and because losing
+any of them costs a repetition rather than a record:
+
+| key | module | what it remembers | cost of losing it |
+|---|---|---|---|
+| `efh:sound` | `sound-pref.ts` | sound on or off | a noise in a quiet room |
+| `efh:road-stand` | `advancement.ts` | the pad the pencil was last *seen* on | one extra celebration |
+| `efh:lesson-resume` | `lesson-resume.ts` | where the child got to inside a lesson, and the questions that lesson was asking | one repeated lesson |
+| `efh:seen` | `progress.ts` | this device has been here before | the returning-visitor path (layer 2 of 3) |
+
+Each one reads through the same discipline `loadProgress()` does: wrapped
+storage access, hostile-input validation, and a defined answer when there is
+nothing there. `efh:lesson-resume` carries whole `Step` objects, so it
+validates them field by field — a bookmark that does not check out is dropped
+rather than repaired, because a lesson restarted is cheap and a lesson that
+crashes on open is not.
 
 ---
 

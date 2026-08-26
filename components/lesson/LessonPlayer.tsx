@@ -19,6 +19,13 @@
  * the letters keep accumulating evidence in phases that contain no letter
  * lessons — see lib/pedagogy.ts §9. A warm-up with nothing due resolves to
  * nothing at all, and the lesson starts on its own first step.
+ *
+ * LEAVING HALFWAY COSTS NOTHING. Every step boundary writes a bookmark (see
+ * lib/lesson-resume.ts), so a lesson closed at step eight of twelve reopens at
+ * step eight of the same twelve — which matters most for exactly the two
+ * lessons above, whose question lists would otherwise be rebuilt differently
+ * on the way back in. The bookmark is dropped the moment the lesson is
+ * finished or deliberately restarted.
  */
 
 import { tintStyle } from "@/lib/palette";
@@ -36,6 +43,7 @@ import { buildReviewLesson, buildWarmupSteps, skillsForStep } from "@/lib/curric
 import { starsFor, completionHeadlineHe } from "@/lib/reward";
 import type { Stars } from "@/lib/reward";
 import { playSfx } from "@/lib/audio";
+import { clearResume, readResume, writeResume } from "@/lib/lesson-resume";
 import {
   BigButton,
   Confetti,
@@ -60,6 +68,17 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
   const router = useRouter();
   const { progress, ready, attempt, completeLesson, learnWord } = useProgress();
 
+  /* --- Run state --------------------------------------------------- */
+  const [index, setIndex] = useState(0);
+  const [phase, setPhase] = useState<Phase>("playing");
+  const [attemptsHere, setAttemptsHere] = useState(0);
+  const [wrongTotal, setWrongTotal] = useState(0);
+  const [celebrating, setCelebrating] = useState(false);
+  const settled = useRef(false);
+  // When the current step appeared. Latency is half of the mastery
+  // criterion (automaticity) — see MASTERY_MEDIAN_LATENCY_MS.
+  const shownAt = useRef<number>(Date.now());
+
   /* --- Resolve the actual lesson ---------------------------------- */
   // A review lesson's content is computed once, when the lesson opens. It is
   // intentionally NOT recomputed as progress changes mid-lesson, or the list
@@ -67,6 +86,20 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
   const [resolved, setResolved] = useState<Lesson | null>(null);
   useEffect(() => {
     if (!ready) return;
+    /*
+     * A bookmark outranks every other way of deciding what this lesson is,
+     * because it IS what this lesson was: the questions it carries are the
+     * ones already half-answered. Rebuilding them from today's progress would
+     * hand a resumed child a different lesson at the same step number.
+     */
+    const saved = readResume(stored.id);
+    if (saved) {
+      setResolved({ ...stored, steps: saved.steps });
+      setIndex(saved.index);
+      setWrongTotal(saved.wrongTotal);
+      shownAt.current = Date.now();
+      return;
+    }
     if (stored.kind === "mixed") {
       setResolved(buildReviewLesson(planMixedReview(progress), stored.id));
       return;
@@ -95,17 +128,6 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
 
   const lesson = resolved;
   const steps: Step[] = useMemo(() => lesson?.steps ?? [], [lesson]);
-
-  /* --- Run state --------------------------------------------------- */
-  const [index, setIndex] = useState(0);
-  const [phase, setPhase] = useState<Phase>("playing");
-  const [attemptsHere, setAttemptsHere] = useState(0);
-  const [wrongTotal, setWrongTotal] = useState(0);
-  const [celebrating, setCelebrating] = useState(false);
-  const settled = useRef(false);
-  // When the current step appeared. Latency is half of the mastery
-  // criterion (automaticity) — see MASTERY_MEDIAN_LATENCY_MS.
-  const shownAt = useRef<number>(Date.now());
 
   const step = steps[index];
   const forceHint = attemptsHere >= HINT_RESCUE_AFTER_WRONG;
@@ -184,21 +206,39 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
         });
       }
     });
-    playSfx("celebrate");
+    // Finished, so there is nothing left to come back to.
+    clearResume(lesson.id);
+    // The level is beaten. This is the app's middle-sized reward, and it is
+    // deliberately not the same sound as finishing a word inside the lesson.
+    playSfx("lesson-clear");
     setCelebrating(true);
     setPhase("done");
     const t = setTimeout(() => setCelebrating(false), CELEBRATION_MS);
     return () => clearTimeout(t);
   }, [index, steps, lesson, stars, completeLesson, learnWord]);
 
+  /* --- the bookmark ------------------------------------------------- */
+  /*
+   * Written on every step boundary rather than on the way out, because there
+   * is no reliable way out to hook: the back button, the home button, a closed
+   * tab and a tablet that goes to sleep are four different exits and only one
+   * of them runs code. A step boundary is a moment that definitely happened.
+   */
+  useEffect(() => {
+    if (!lesson || settled.current) return;
+    if (index <= 0 || index >= steps.length) return;
+    writeResume(lesson.id, { index, wrongTotal, steps });
+  }, [lesson, steps, index, wrongTotal]);
+
   const restart = useCallback(() => {
+    if (lesson) clearResume(lesson.id);
     settled.current = false;
     setIndex(0);
     setWrongTotal(0);
     setAttemptsHere(0);
     setPhase("playing");
     shownAt.current = Date.now();
-  }, []);
+  }, [lesson]);
 
   /*
    * FORWARD IS THROUGH THE ROAD, always.

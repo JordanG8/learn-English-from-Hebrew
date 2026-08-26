@@ -125,7 +125,9 @@ export function Walkthrough({
     if (i + 1 >= steps.length) {
       if (finishedRef.current) return;
       finishedRef.current = true;
-      playSfx("celebrate");
+      // The walkthrough completes the tutorial lesson, so it earns the same
+      // sound any other finished lesson does.
+      playSfx("lesson-clear");
       onFinish();
     } else {
       setI((n) => n + 1);

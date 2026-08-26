@@ -64,9 +64,10 @@ function audioContext(): AudioContext | null {
 
 /**
  * THE OUTPUT BUS. Everything synthesised goes through one compressor rather
- * than straight at the speakers: the level-up stacks four layers at once, and
- * four envelopes peaking together on a phone speaker is a crackle, not a
- * fanfare. Made lazily with the context, and rebuilt if the context is.
+ * than straight at the speakers: the level-up score stacks a brass section, a
+ * cymbal, two timpani and a bell over the same half second, and that many
+ * envelopes peaking together on a phone speaker is a crackle, not a fanfare.
+ * Made lazily with the context, and rebuilt if the context is.
  */
 let bus: DynamicsCompressorNode | null = null;
 let busCtx: AudioContext | null = null;
@@ -123,24 +124,38 @@ function tone(freq: number, startAt: number, durS: number, gain = 0.14): void {
 /* ------------------------------------------------------------------ */
 /*
  * Everything above this point is a beep, and a beep is the right size for
- * "you pressed a key". Finishing a level is not that, and the difference has
+ * "you pressed a key". Finishing something is not that, and the difference has
  * to be audible in the first fifty milliseconds or the reward reads as the
  * same event as a tap.
  *
- * So the level-up is built the way an actual sound designer builds one, out of
- * four layers that do four different jobs, and still with no asset files:
+ * THERE ARE THREE SIZES OF REWARD IN THIS APP, and they must sound like three
+ * different sizes or the biggest one is worth nothing:
+ *
+ *   1. `celebrate` — a word or a sentence finished INSIDE a lesson. A short
+ *      arpeggio on plain tones. It happens many times a level, so it stays
+ *      small on purpose.
+ *   2. `lesson-clear` — the level is beaten and the stars screen is up. This
+ *      is the sound that used to be reserved for the road, promoted: whoosh,
+ *      thump, crack and a bell fanfare. It is a real event.
+ *   3. `level-up` — the pencil lands on the next pad. This one is a piece of
+ *      music with a brass section in it, and nothing else in the app is
+ *      allowed to sound like it.
+ *
+ * The layers below are the vocabulary all three are written in, and still with
+ * no asset files:
  *
  *   · a WHOOSH — filtered noise sweeping up — under the jump, so the flight
  *     has a sound and not just the landing;
  *   · a THUMP — a sine dropped fast through its own pitch — which is the part
  *     you feel rather than hear, and the reason the landing has weight;
- *   · an IMPACT — a bright, very short noise crack — which is the part that
- *     makes the thump read as hitting something;
- *   · a FANFARE — a major arpeggio on bell voices over a held fifth — which is
- *     the part a child will hum.
+ *   · a CRASH — a cymbal: bright noise with a long tail, the thing that makes
+ *     an orchestra sound like an orchestra and not like a keyboard;
+ *   · a TIMPANI — a tuned drum, which is how a fanfare gets a floor;
+ *   · a BRASS voice — detuned saws under a filter envelope, i.e. a trumpet;
+ *   · a BELL and a SWELL — the sparkle over the top and the pad underneath.
  *
  * They are stacked with real envelopes (fast attack, exponential decay) and a
- * shared soft-clip on the way out, so four layers at once cannot crackle.
+ * shared compressor on the way out, so a dozen layers at once cannot crackle.
  */
 
 let noiseBuf: AudioBuffer | null = null;
@@ -269,12 +284,166 @@ function swell(freq: number, startAt: number, durS: number, gain = 0.07): void {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* The orchestra                                                        */
+/* ------------------------------------------------------------------ */
+/*
+ * Three more voices, and they exist for one reason: `level-up` is now a piece
+ * of music rather than a sound effect, and music needs a section, a drum and a
+ * cymbal. Bells alone always read as "notification"; a trumpet never does.
+ */
+
+/**
+ * A CYMBAL CRASH. Noise, opened up bright and left to ring.
+ *
+ * It is the one layer with a tail longer than the note that caused it, which
+ * is exactly what makes a hit sound like it happened in a room. The noise
+ * buffer is a single second, so anything longer has to loop it — otherwise the
+ * crash stops dead halfway through its own decay.
+ */
+function crash(startAt: number, gain = 0.15, durS = 1.6): void {
+  const ac = audioContext();
+  if (!ac) return;
+  try {
+    const t0 = ac.currentTime + startAt;
+    const src = ac.createBufferSource();
+    src.buffer = noiseBuffer(ac);
+    src.loop = true;
+    const hp = ac.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.setValueAtTime(2600, t0);
+    // Sweeping the corner UP as it decays is what turns a hiss into a cymbal:
+    // the low end of a crash dies long before the shimmer does.
+    hp.frequency.exponentialRampToValueAtTime(7200, t0 + durS);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + durS);
+    src.connect(hp).connect(g).connect(output(ac));
+    src.start(t0);
+    src.stop(t0 + durS + 0.05);
+  } catch {
+    /* fail silent */
+  }
+}
+
+/**
+ * A TIMPANI. A tuned drum: a sine that falls a fourth in the first sixty
+ * milliseconds, with a scrap of filtered noise on the front for the mallet.
+ *
+ * `thump` is the untuned version of this and is still the right thing for an
+ * impact. This one carries a pitch, so it can sit in the chord.
+ */
+function timpani(freq: number, startAt: number, gain = 0.34): void {
+  const ac = audioContext();
+  if (!ac) return;
+  try {
+    const t0 = ac.currentTime + startAt;
+    const osc = ac.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq * 1.35, t0);
+    osc.frequency.exponentialRampToValueAtTime(freq, t0 + 0.06);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.85);
+    osc.connect(g).connect(output(ac));
+    osc.start(t0);
+    osc.stop(t0 + 0.9);
+
+    // The mallet. Without it the drum has no edge and reads as a bass note.
+    const src = ac.createBufferSource();
+    src.buffer = noiseBuffer(ac);
+    const lp = ac.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 900;
+    const ng = ac.createGain();
+    ng.gain.setValueAtTime(0.0001, t0);
+    ng.gain.exponentialRampToValueAtTime(gain * 0.5, t0 + 0.005);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.07);
+    src.connect(lp).connect(ng).connect(output(ac));
+    src.start(t0);
+    src.stop(t0 + 0.1);
+  } catch {
+    /* fail silent */
+  }
+}
+
+/**
+ * A TRUMPET.
+ *
+ * Three things make a sawtooth sound like brass rather than like a synthesiser,
+ * and all three are here because leaving any one out is audible:
+ *
+ *  · THE FILTER ENVELOPE. A horn gets brighter the harder it is blown, so the
+ *    cutoff opens with the attack and closes again as the note dies. This is
+ *    the single biggest difference between "brass" and "buzz".
+ *  · THE SCOOP. A player arrives at the pitch from just underneath it. Forty
+ *    milliseconds of it, and the note stops sounding quantised.
+ *  · THE SECTION. Three oscillators a few cents apart, because one trumpet is
+ *    a solo and a fanfare is a section.
+ *
+ * Vibrato is added on top and fades IN, so short calls are straight and only
+ * held notes wobble — which is what a player actually does.
+ */
+function brass(freq: number, startAt: number, durS: number, gain = 0.13): void {
+  const ac = audioContext();
+  if (!ac) return;
+  try {
+    const t0 = ac.currentTime + startAt;
+
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.03);
+    g.gain.setValueAtTime(gain, t0 + Math.max(0.05, durS * 0.7));
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + durS);
+
+    const f = ac.createBiquadFilter();
+    f.type = "lowpass";
+    f.Q.value = 2.5;
+    f.frequency.setValueAtTime(Math.min(700, freq * 1.4), t0);
+    f.frequency.exponentialRampToValueAtTime(Math.min(9000, freq * 6.5), t0 + 0.06);
+    f.frequency.exponentialRampToValueAtTime(Math.max(600, freq * 2), t0 + durS);
+    f.connect(g).connect(output(ac));
+
+    const lfo = ac.createOscillator();
+    lfo.frequency.value = 5.4;
+    const depth = ac.createGain();
+    depth.gain.setValueAtTime(0, t0);
+    depth.gain.linearRampToValueAtTime(freq * 0.006, t0 + durS * 0.75);
+    lfo.connect(depth);
+    lfo.start(t0);
+    lfo.stop(t0 + durS + 0.05);
+
+    for (const cents of [-7, 0, 6]) {
+      const o = ac.createOscillator();
+      o.type = "sawtooth";
+      o.detune.value = cents;
+      o.frequency.setValueAtTime(freq * 0.975, t0);
+      o.frequency.exponentialRampToValueAtTime(freq, t0 + 0.04);
+      // Summed with the automation above rather than replacing it, which is
+      // why the scoop and the vibrato can both exist on the same param.
+      depth.connect(o.frequency);
+      const og = ac.createGain();
+      og.gain.value = 1 / 3;
+      o.connect(og).connect(f);
+      o.start(t0);
+      o.stop(t0 + durS + 0.05);
+    }
+  } catch {
+    /* fail silent */
+  }
+}
+
 export type Sfx =
   | "tap"
   | "correct"
   | "wrong"
   | "letter-lands"
+  /** A word or a sentence finished inside a lesson. The small one. */
   | "celebrate"
+  /** The lesson is beaten and the stars are up. The middle one. */
+  | "lesson-clear"
   /** The pencil leaves the pad. Pairs with "level-up". */
   | "hop-launch"
   /** The pencil lands on the next level. The big one. */
@@ -308,18 +477,77 @@ export function playSfx(name: Sfx): void {
       tone(392, 0, 0.1, 0.06);
       tone(587, 0.07, 0.12, 0.06);
       break;
-    case "level-up": {
-      // Weight first…
+    case "lesson-clear": {
+      /*
+       * FINISHING A LESSON is the moment the stars screen appears, and it used
+       * to share `celebrate` with "you typed the last letter of CAT" — the
+       * same five tones for a step and for the whole level. So it takes over
+       * the sound the road used to own: weight, a crack, and a bell fanfare.
+       * The road, in turn, has moved up to the score below.
+       */
       thump(0, 0.55);
       whoosh(0, 0.14, 5200, 900, 0.16, "highpass");
-      // …then the tune. C major, up and over the octave, with the fifth held
-      // underneath so the last note lands on a chord and not on a beep.
+      // A riser under the arpeggio, pointing at the stars as they land.
+      whoosh(0.04, 0.5, 320, 3600, 0.07);
+      // C major, up and over the octave, with the fifth held underneath so the
+      // last note lands on a chord and not on a beep.
       const ARP = [523.25, 659.25, 783.99, 1046.5];
       ARP.forEach((f, i) => bell(f, 0.06 + i * 0.075, 0.55 + i * 0.12, 0.17));
       bell(1567.98, 0.36, 1.5, 0.1);
       bell(2093, 0.42, 1.3, 0.055);
       swell(261.63, 0.05, 1.25, 0.06);
       swell(392, 0.05, 1.25, 0.045);
+      break;
+    }
+    case "level-up": {
+      /*
+       * THE SCORE. Beating a level is the largest thing that happens in this
+       * app and it happens perhaps fifty times in the whole track, so it is
+       * written out as music — in C major, in five beats, with an actual
+       * brass section — rather than assembled out of effects.
+       *
+       * Times are seconds from the frame the pencil hits the pad. It runs a
+       * little past the end of the cinematic on purpose: the tail is what the
+       * child hears while the camera glides on to the level they just opened.
+       */
+
+      // 1. THE IMPACT. The landing, and the orchestra hitting with it.
+      thump(0, 0.5);
+      crash(0, 0.15, 1.7);
+      timpani(65.41, 0, 0.38); // C2
+      timpani(98.0, 0.2, 0.24); // G2
+
+      // 2. THE CALL. Three notes straight up the triad — the part a child
+      //    will be humming on the way to the next level.
+      brass(392.0, 0.0, 0.17, 0.12); // G4
+      brass(523.25, 0.15, 0.17, 0.13); // C5
+      brass(659.25, 0.3, 0.17, 0.14); // E5
+
+      // 3. THE ANSWER. The top note held, with the section arriving under it.
+      brass(783.99, 0.45, 0.6, 0.15); // G5, the melody
+      brass(523.25, 0.45, 0.6, 0.075); // C5
+      brass(659.25, 0.45, 0.6, 0.06); // E5
+      swell(130.81, 0.45, 1.05, 0.05); // C3, the floor
+      timpani(98.0, 0.72, 0.18);
+
+      // 4. THE RUN. G, A, B — a ladder, so the last chord is arrived at and
+      //    not merely played.
+      brass(783.99, 1.06, 0.12, 0.12);
+      brass(880.0, 1.18, 0.12, 0.12);
+      brass(987.77, 1.3, 0.12, 0.13);
+
+      // 5. THE CHORD. Everything at once, then bells over the top of it.
+      brass(1046.5, 1.42, 1.25, 0.14); // C6
+      brass(783.99, 1.42, 1.25, 0.07);
+      brass(659.25, 1.42, 1.25, 0.055);
+      brass(523.25, 1.42, 1.25, 0.06);
+      timpani(65.41, 1.42, 0.36);
+      timpani(65.41, 1.63, 0.2);
+      crash(1.42, 0.13, 2.0);
+      swell(130.81, 1.42, 1.5, 0.055);
+      swell(196.0, 1.42, 1.5, 0.04);
+      bell(2093.0, 1.5, 1.3, 0.07);
+      bell(3135.96, 1.62, 1.1, 0.038);
       break;
     }
   }
