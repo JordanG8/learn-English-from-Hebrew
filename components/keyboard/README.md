@@ -158,13 +158,19 @@ screen.
 | what | how |
 | --- | --- |
 | key width | `calc(var(--u) * width)`, `--u: 6.667%` — never a pixel minimum |
-| cap height | `clamp(20px, min(6.2cqw, 9.5vh), 72px)` — follows the container width, capped against viewport height so a landscape phone still shows all five rows |
+| cap height | `clamp(26px, min(12cqw, 9.5vh), 76px)` — half again as tall as a cap is wide (the proportion a phone's own keyboard uses), capped against viewport height so a landscape phone still shows the letter rows. Width is fixed by the 15-unit row; height is the one dimension that is free, and spending it is what makes the glyphs legible |
 | padding / radius | `--kp` and the corner radius scale with the caps |
-| legends | the cap sets `font-size: calc(var(--kh) * 0.34)` and every legend is sized in `em`, so text shrinks with the key instead of overflowing it |
+| legends | the cap sets `font-size: calc(var(--kh) * 0.4)` and every legend is sized in `em`, so text shrinks with the key instead of overflowing it |
+| gutters | below `sm` the board takes back the lesson's 16 px page padding (`-mx-4`), which is ~8 % more key on a 390 px phone |
 
-At 360 px this gives ~22 px caps. Small, but complete, stationary, and
+At 390 px this gives ~26 × 47 px caps. Small, but complete, stationary, and
 identical in arrangement to the board on a desktop — which is what makes the
 positions learnable.
+
+On a **short** viewport (`max-height: 560px` — a phone on its side) the chrome
+around the board gives way to it instead: the screen header, the press-key
+prompt card and the language switch all compact, and the passive "Alt+Shift"
+reminder is dropped. The red *switch now* instruction is never dropped.
 
 `mode="auto"` and `mode="full"` both render this full board on every screen.
 `mode="focus"` still renders only the highlighted keys as big tiles, but no
@@ -177,9 +183,19 @@ keyboard never rearranges itself underneath a child mid-lesson.
 
 Each cap is drawn the way an Israeli keycap is printed: **English legend
 top-left, Hebrew legend bottom-right, always both, always in the same place.**
-Only the emphasis moves — the active layout's glyph is large and inked, the
-other is small and 45 % opacity. Learning to read the physical keycap is part
-of the curriculum, so the on-screen cap has to look like the real one.
+Only the emphasis moves — the active layout's character is centred, black and
+full size; the other is a small tinted badge in its printed corner. Learning to
+read the physical keycap is part of the curriculum, so the on-screen cap has to
+look like the real one, and the second legend has to be *readable* rather than
+decorative (it used to be 0.62em at 45 % opacity, which on a phone was
+invisible).
+
+**Which character is the big one:** a letter key prints its capital, because
+that is what is silk-screened. Every other key prints what it produces
+UNSHIFTED, with the shifted character as the secondary legend — so the digit
+row reads `1 2 3` with `! @ #` in the corners, not the other way round. Where
+the two layouts agree on a key (the digits), the secondary slot shows the
+shifted character rather than printing the same glyph twice.
 
 `F` and `J` carry a drawn bar matching the physical bumps.
 

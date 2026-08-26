@@ -31,9 +31,10 @@ export interface KeyProps {
  *
  * The cap mirrors a real Israeli keycap: the English legend sits top-left and
  * the Hebrew legend bottom-right, always both, always in the same place. Only
- * their weight changes — the ACTIVE layout's glyph is large and inked, the
- * other is small and faded. That constancy is itself part of the lesson: the
- * child learns to read the hardware in front of them.
+ * their weight changes — the ACTIVE layout's character is centred and black,
+ * the other is a small tinted badge in its printed corner. That constancy is
+ * itself part of the lesson: the child learns to read the hardware in front
+ * of them, so the second legend has to be legible rather than decorative.
  */
 export function Key({
   cap,
@@ -49,10 +50,47 @@ export function Key({
 }: KeyProps) {
   const isModifier = NON_CHARACTER_KEYS.has(cap.code);
   const isSpace = cap.code === "Space";
+  /** The cap has a solid coloured face: white ink, and a white badge. */
+  const filled = pressed || state === "highlight";
 
-  const enGlyph = cap.en.upper;
+  /*
+   * WHICH GLYPH IS THE BIG ONE.
+   *
+   * A letter key is printed with its capital — that is what is silk-screened,
+   * and "A" is what a child is asked to find. Every OTHER key produces its
+   * UNSHIFTED character when tapped, and that is the character the cap must
+   * lead with: this used to print `cap.en.upper` for every key, so the number
+   * row read `! @ # $ % ^ & * ( )` in giant type with the digits nowhere to be
+   * seen, while the step said "press 1". The shifted character is real and
+   * still printed — as the secondary legend, which is exactly where it lives
+   * on the hardware.
+   */
+  const isLetterKey = /^[a-z]$/.test(cap.en.lower);
+  const enGlyph = isLetterKey ? cap.en.upper : cap.en.lower;
+  /** What Shift produces here, when that is a different character. */
+  const enShiftGlyph =
+    isLetterKey || cap.en.upper === cap.en.lower ? null : cap.en.upper;
   const heGlyph = cap.he ? cap.he.lower : null;
+  const heShiftGlyph =
+    cap.he && cap.he.upper !== cap.he.lower ? cap.he.upper : null;
   const activeIsHe = lang === "he" && heGlyph !== null;
+
+  /*
+   * The primary legend is the active layout's character; the secondary is the
+   * OTHER layout's, because reading the hardware in front of you is half the
+   * lesson. On the digit row the two layouts agree, so printing the other one
+   * would just draw "1" twice — there the secondary slot shows what Shift
+   * does instead, which is the only thing about that key a child does not
+   * already know.
+   */
+  const primary = activeIsHe ? (heGlyph as string) : enGlyph;
+  const secondaryRaw = activeIsHe ? enGlyph : heGlyph;
+  const secondary =
+    secondaryRaw && secondaryRaw !== primary
+      ? secondaryRaw
+      : activeIsHe
+        ? heShiftGlyph
+        : enShiftGlyph;
 
   // Recall mode hides the legends but never the modifiers — a child still has
   // to be able to find Shift while being tested on where "R" lives.
@@ -65,9 +103,7 @@ export function Key({
     ? cap.en.lower
     : isSpace
       ? "רווח"
-      : activeIsHe
-        ? `${heGlyph} (${enGlyph})`
-        : `${enGlyph}${heGlyph ? ` (${heGlyph})` : ""}`;
+      : `${primary}${secondary ? ` (${secondary})` : ""}`;
 
   return (
     <div
@@ -110,9 +146,12 @@ export function Key({
           pressed
             ? "-translate-y-0 scale-95 border-go bg-go text-white shadow-[0_0_0_5px_var(--color-go-soft)]"
             : state === "highlight"
-              ? "border-brand bg-brand-soft text-ink shadow-[0_0_0_4px_var(--color-star)]"
+              // The one key the step is about. It has to win against forty-
+              // seven others at a glance, so it takes the brand fill outright
+              // rather than a tint of it, and keeps the gold ring.
+              ? "border-brand bg-brand text-white shadow-[0_0_0_5px_var(--color-star)]"
               : state === "dim"
-                ? "border-transparent bg-card text-ink-soft opacity-35"
+                ? "border-brand-soft/50 bg-card text-ink opacity-55"
                 : "border-brand-soft bg-card text-ink",
           "shadow-[0_3px_0_rgba(0,0,0,0.10)] active:shadow-none",
         ].join(" ")}
@@ -122,7 +161,7 @@ export function Key({
           borderRadius: tile ? undefined : "calc(var(--kh, 44px) * 0.2)",
           // Every legend below is sized in em, so one declaration keeps the
           // whole cap readable at any scale.
-          fontSize: tile ? undefined : "calc(var(--kh, 44px) * 0.34)",
+          fontSize: tile ? undefined : "calc(var(--kh, 44px) * 0.4)",
           touchAction: "manipulation",
         }}
       >
@@ -140,37 +179,47 @@ export function Key({
         )}
 
         {isModifier || isSpace ? (
-          <span className="ltr overflow-hidden text-[0.72em] font-bold leading-none opacity-80">
+          <span className="ltr overflow-hidden text-[0.78em] font-black leading-none">
             {isSpace ? "␣" : cap.en.lower}
           </span>
         ) : showLegends ? (
           <span className="flex h-full w-full items-center justify-center">
-            {/* English legend — top-left, exactly where it is silk-screened. */}
+            {/* The active layout's character: centred, black, as big as the
+                cap allows. This is the thing being hunted for. */}
             <span
               className={[
-                "ltr absolute leading-none",
-                activeIsHe
-                  ? "left-[0.15em] top-[0.1em] text-[0.62em] opacity-45"
-                  : tile
-                    ? "text-[1em]"
-                    : "text-[1.35em]",
+                activeIsHe ? "rtl" : "ltr",
+                "absolute font-black leading-none",
+                tile ? "text-[1.05em]" : "text-[1.42em]",
               ].join(" ")}
             >
-              {enGlyph}
+              {primary}
             </span>
-            {/* Hebrew legend — bottom-right. */}
-            {heGlyph && (
+            {/* The other legend. It sits where it is silk-screened — the
+                English one top-left, the Hebrew one bottom-right — and it is
+                deliberately NOT a whisper: at 45% opacity and 0.62em it was
+                invisible on a phone, which made half the keycap decorative.
+                It is now a small solid badge, readable at arm's length. */}
+            {secondary && (
               <span
                 className={[
-                  "rtl absolute leading-none",
-                  activeIsHe
-                    ? tile
-                      ? "text-[1em]"
-                      : "text-[1.35em]"
-                    : "bottom-[0.1em] right-[0.15em] text-[0.62em] opacity-45",
+                  activeIsHe ? "ltr left-[0.12em] top-[0.08em]" : "rtl bottom-[0.08em] right-[0.12em]",
+                  "absolute rounded-[0.25em] px-[0.14em] font-black leading-none",
+                  tile ? "text-[0.5em]" : "text-[0.72em]",
                 ].join(" ")}
+                style={
+                  // A filled cap (pressed, or the key the step is asking for)
+                  // has a coloured face, so the badge switches to the light
+                  // side of it rather than disappearing into it.
+                  filled
+                    ? { color: "rgba(255,255,255,0.95)", background: "rgba(255,255,255,0.22)" }
+                    : {
+                        color: "var(--color-brand)",
+                        background: "color-mix(in srgb, var(--color-brand) 14%, transparent)",
+                      }
+                }
               >
-                {heGlyph}
+                {secondary}
               </span>
             )}
           </span>

@@ -93,6 +93,11 @@ export function LanguageSwitch({
         className={[
           "flex items-center gap-3 rounded-[var(--radius-kid)] border-4 bg-card px-4",
           big ? "min-h-[72px]" : "min-h-[64px]",
+          // A landscape phone has ~390px of height for a header, a prompt,
+          // this switch AND five rows of keys. The switch is the part that
+          // can shrink without anything being lost, so on a short viewport it
+          // does — the keys are what the child came for.
+          "[@media(max-height:560px)]:min-h-[48px] [@media(max-height:560px)]:gap-2 [@media(max-height:560px)]:px-2",
           "transition-transform duration-75 active:translate-y-1",
           needsSwitch ? "animate-pulse border-warn shadow-[0_0_0_6px_var(--color-star)]" : "border-brand-soft",
         ].join(" ")}
@@ -100,16 +105,19 @@ export function LanguageSwitch({
       >
         {/* ACTIVE side — big, coloured, unmistakable. */}
         <span
-          className="flex h-14 min-w-14 items-center justify-center rounded-2xl text-3xl font-black"
+          className="flex h-14 min-w-14 items-center justify-center rounded-2xl text-3xl font-black [@media(max-height:560px)]:h-9 [@media(max-height:560px)]:min-w-9 [@media(max-height:560px)]:text-xl"
           style={{ background: now.color, color: now.ink }}
         >
           <span className={lang === "en" ? "ltr" : "rtl"}>{now.glyph}</span>
         </span>
         <span className="flex flex-col items-start leading-tight">
-          <span className="text-xl font-bold" style={{ color: now.color }}>
+          <span
+            className="text-xl font-bold [@media(max-height:560px)]:text-base"
+            style={{ color: now.color }}
+          >
             {now.name}
           </span>
-          <span className="text-sm text-ink-soft">{now.sub}</span>
+          <span className="text-sm text-ink-soft [@media(max-height:560px)]:hidden">{now.sub}</span>
         </span>
 
         {/* INACTIVE side — small and faded, so "what am I in?" is never a question. */}
@@ -129,7 +137,12 @@ export function LanguageSwitch({
       {showHint && (
         <p
           className={`rtl flex items-center gap-2 text-center text-base ${
-            needsSwitch ? "font-bold text-stop" : "text-ink-soft"
+            needsSwitch
+              ? "font-bold text-stop"
+              : // The passive reminder is worth a line on a phone held upright
+                // and worth a row of keys nowhere. It goes first when the
+                // screen is short; the red "switch now" instruction stays.
+                "text-ink-soft [@media(max-height:560px)]:hidden"
           }`}
         >
           <span aria-hidden="true">{needsSwitch ? "👉" : "⌨️"}</span>

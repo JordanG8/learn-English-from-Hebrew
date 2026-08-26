@@ -37,7 +37,9 @@ lib/
   reward.ts             stars, Hebrew praise, the anti-overjustification rules
   audio.ts              WebAudio SFX + speech: recording, then model, then TTS
                         (four reward sizes: beep, fanfare, fanfare rung out,
-                        and the brass score for beating a level)
+                        and the brass score for beating a level — played once,
+                        on the stars screen; the pencil's landing on the road
+                        gets the impact without the music)
   tour.ts               the data-tour selector contract
   visitor.ts            returning-visitor policy (pure)
   visitor-server.ts     server-side read of the visit cookie

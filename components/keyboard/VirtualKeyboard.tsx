@@ -266,7 +266,7 @@ export function VirtualKeyboard({
 
   return (
     <section
-      className={`flex w-full flex-col items-center gap-3 ${className}`}
+      className={`flex w-full flex-col items-center gap-2 sm:gap-3 ${className}`}
       aria-label="מקלדת"
     >
       {showLanguageSwitch && (
@@ -290,7 +290,21 @@ export function VirtualKeyboard({
         </div>
       ) : (
         <div
-          className="w-full pb-1"
+          /*
+           * FULL BLEED ON A PHONE. The board is 15 units wide however narrow
+           * the screen is, so every pixel of page padding it does not take
+           * comes straight off the width of every cap. The lesson gives it a
+           * 16px gutter on each side; below `sm` it takes them back, which is
+           * ~8% more key on a 390px phone. On anything wider the gutter is
+           * not worth the ragged edge, so it stays.
+           */
+          className={[
+            "-mx-4 w-[calc(100%+2rem)] pb-1",
+            // The short-screen lesson layout drops its gutter to 8px, so the
+            // bleed has to match it or the page scrolls sideways.
+            "[@media(max-height:560px)]:-mx-2 [@media(max-height:560px)]:w-[calc(100%+1rem)]",
+            "sm:mx-0 sm:w-full",
+          ].join(" ")}
           style={{ containerType: "inline-size" } as CSSProperties}
         >
           <div
@@ -301,14 +315,22 @@ export function VirtualKeyboard({
                 // 15 keyboard units across, each a share of the row: the board
                 // is exactly as wide as its container, always.
                 "--u": `${100 / 15}%`,
-                // Cap height follows the container width so the caps stay
-                // square-ish, and is capped against the viewport height so all
-                // five rows survive a landscape phone. Small keys, never hidden
-                // keys.
-                "--kh": "clamp(20px, min(6.2cqw, 9.5vh), 72px)",
+                /*
+                 * Cap height. Fifteen units across a phone is a ~25px-wide
+                 * cap and nothing can change that without scrolling the
+                 * board — but nothing forces the cap to be as SHORT as it is
+                 * narrow, and the old `6.2cqw` made it exactly that: a 22px
+                 * key with a 7px glyph, under half a screen of empty space.
+                 * Height is the one dimension that is free here, so the caps
+                 * are now half again as tall as they are wide (the same
+                 * proportion a phone's own keyboard uses), still capped
+                 * against the viewport so all five rows survive a landscape
+                 * phone. Small keys, never hidden keys.
+                 */
+                "--kh": "clamp(26px, min(12cqw, 9.5vh), 76px)",
                 // Gap between caps shrinks with them, or thin boards lose their
                 // key area to padding.
-                "--kp": "clamp(1px, 0.35cqw, 4px)",
+                "--kp": "clamp(1.5px, 0.4cqw, 4px)",
               } as CSSProperties
             }
           >

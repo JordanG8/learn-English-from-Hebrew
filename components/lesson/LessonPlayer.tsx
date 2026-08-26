@@ -316,7 +316,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
         <StepBar current={index} total={steps.length} />
       </div>
 
-      <div className="flex flex-1 flex-col gap-4 p-4">
+      <div className="flex flex-1 flex-col gap-4 p-4 [@media(max-height:560px)]:gap-2 [@media(max-height:560px)]:p-2">
         {step.type === "letter-sound" ? (
           <LetterSoundView step={step} {...common} />
         ) : step.type === "letter-shape" ? (

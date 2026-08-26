@@ -139,10 +139,14 @@ function tone(freq: number, startAt: number, durS: number, gain = 0.14): void {
  *      short tail so consecutive right answers do not pile up.
  *   3. `celebrate` — a whole word or sentence built. The same fanfare with
  *      its full tail, because the payoff step has earned the ring-out.
- *   4. `lesson-clear` and `level-up` — THE LEVEL IS BEATEN: the stars screen,
- *      and the pencil landing on the next pad. Both play `score()`, which is
- *      a piece of music with a brass section in it, and nothing smaller is
- *      allowed to sound like it.
+ *   4. `lesson-clear` — THE LEVEL IS BEATEN. The stars screen plays
+ *      `score()`, a piece of music with a brass section in it, and nothing
+ *      smaller is allowed to sound like it. It is played ONCE per level:
+ *      `level-up`, the pencil landing on the next pad on the road, used to
+ *      play the same piece, which meant every child who beat a level heard
+ *      the identical fanfare twice within a few seconds — the second one
+ *      cheapening the first. The landing now keeps the impact and drops the
+ *      music; see `playSfx`.
  *
  * The layers below are the vocabulary all three are written in, and still with
  * no asset files:
@@ -533,7 +537,8 @@ export type Sfx =
   | "lesson-clear"
   /** The pencil leaves the pad. Pairs with "level-up". */
   | "hop-launch"
-  /** The pencil lands on the next level. The big one. */
+  /** The pencil lands on the next level. The impact only — the music for
+   *  beating a level belongs to `lesson-clear`, and plays once. */
   | "level-up";
 
 /** Fail-silent UI sound. Never awaits, never throws. */
@@ -574,7 +579,16 @@ export function playSfx(name: Sfx): void {
       score();
       break;
     case "level-up":
-      score();
+      // THE PENCIL LANDS — and deliberately NOT the score. The stars screen
+      // has just played `lesson-clear` a few seconds earlier, and the child
+      // walked from that screen to this one: the same piece of music twice in
+      // a row does not read as two rewards, it reads as a bug. So the landing
+      // keeps only the physical half of the celebration — the weight of the
+      // impact and the crack of it — and lets `lesson-clear` be the one time
+      // the music plays.
+      thump(0, 0.5);
+      whoosh(0, 0.22, 1800, 320, 0.075);
+      tone(523.25, 0.02, 0.16, 0.07); // C5
       break;
   }
 }

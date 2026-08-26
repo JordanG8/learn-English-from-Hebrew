@@ -206,8 +206,11 @@ export function LevelSelect() {
             if (phase === "launch") {
               playSfx("hop-launch");
             } else if (phase === "land") {
-              // The big one, on the frame of the impact. A fanfare that
-              // arrives a tenth of a second late reads as a different event.
+              // On the frame of the impact — a sound that arrives a tenth of a
+              // second late reads as a different event. This is the LANDING,
+              // not a second fanfare: the child heard the full score on the
+              // stars screen seconds ago, on their way here, and playing it
+              // again made one achievement sound like two. See lib/audio.ts.
               playSfx("level-up");
               setLevelUp("landed");
             } else {

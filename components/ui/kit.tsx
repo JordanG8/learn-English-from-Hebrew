@@ -299,22 +299,26 @@ export function ScreenHeader({
   right?: React.ReactNode;
 }) {
   return (
-    <header className="flex items-center justify-between gap-3 p-3">
+    // The header keeps its 64px touch target on a phone held upright and
+    // shrinks on a short screen, where every row it costs is a row of keys.
+    <header className="flex items-center justify-between gap-3 p-3 [@media(max-height:560px)]:p-1.5">
       {onBack ? (
         <button
           type="button"
           onClick={onBack}
           aria-label="חזרה"
           data-tour="back"
-          className="grid h-16 w-16 shrink-0 place-items-center rounded-[var(--radius-kid)] border-[3px] border-brand-soft bg-card text-3xl"
+          className="grid h-16 w-16 shrink-0 place-items-center rounded-[var(--radius-kid)] border-[3px] border-brand-soft bg-card text-3xl [@media(max-height:560px)]:h-11 [@media(max-height:560px)]:w-11 [@media(max-height:560px)]:text-2xl"
         >
           <span aria-hidden>{"→"}</span>
         </button>
       ) : (
-        <span className="h-16 w-16" />
+        <span className="h-16 w-16 [@media(max-height:560px)]:h-11 [@media(max-height:560px)]:w-11" />
       )}
       <h1 className="min-w-0 flex-1 truncate text-center text-xl font-bold">{title}</h1>
-      <div className="flex h-16 min-w-16 items-center justify-end">{right}</div>
+      <div className="flex h-16 min-w-16 items-center justify-end [@media(max-height:560px)]:h-11 [@media(max-height:560px)]:min-w-11">
+        {right}
+      </div>
     </header>
   );
 }

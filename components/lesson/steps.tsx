@@ -302,9 +302,13 @@ export function PressKeyView({
   );
 
   return (
-    <div className="flex flex-col gap-4">
-      <Card className="flex flex-col items-center gap-3">
-        <p className="text-center text-2xl font-bold">{step.promptHe}</p>
+    /* On a short screen (a phone on its side) the prompt gives its padding
+       and a type size to the keyboard, which is the part being practised. */
+    <div className="flex flex-col gap-4 [@media(max-height:560px)]:gap-2">
+      <Card className="flex flex-col items-center gap-3 [@media(max-height:560px)]:gap-1 [@media(max-height:560px)]:!py-3">
+        <p className="text-center text-2xl font-bold [@media(max-height:560px)]:text-lg">
+          {step.promptHe}
+        </p>
         {!langOk ? (
           <p className="rounded-2xl bg-warn/20 px-4 py-2 text-center text-lg font-bold">
             <span aria-hidden>⇄ </span>
