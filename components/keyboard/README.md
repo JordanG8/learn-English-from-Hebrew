@@ -158,12 +158,14 @@ screen.
 | what | how |
 | --- | --- |
 | key width | `calc(var(--u) * width)`, `--u: 6.667%` — never a pixel minimum |
+| the grid | the caps are cells, not tiles: no padding between them, no corner radius, and ONE line between neighbours. Each cap draws its right and bottom edge (`--kline` / `--klw`) and inherits its left and top from the cap beside and above it; the board element closes the top and left of the whole grid. Nothing else separates one key from the next, so the line is drawn to be seen |
 | cap height | `clamp(26px, min(12cqw, 9.5vh), 76px)` — half again as tall as a cap is wide (the proportion a phone's own keyboard uses), capped against viewport height so a landscape phone still shows the letter rows. Width is fixed by the 15-unit row; height is the one dimension that is free, and spending it is what makes the glyphs legible |
-| padding / radius | `--kp` and the corner radius scale with the caps |
+
 | legends | the cap sets `font-size: calc(var(--kh) * 0.4)` and every legend is sized in `em`, so text shrinks with the key instead of overflowing it |
+| state | the highlight and press rings are drawn INSIDE the cell (`box-shadow: inset`) and dimming is applied to the legends, never to the button — an outset ring or a faded cell would break the grid line it shares with its neighbours |
 | gutters | below `sm` the board takes back the lesson's 16 px page padding (`-mx-4`), which is ~8 % more key on a 390 px phone |
 
-At 390 px this gives ~26 × 47 px caps. Small, but complete, stationary, and
+At 390 px this gives ~26 × 47 px cells, edge to edge. Small, but complete, stationary, and
 identical in arrangement to the board on a desktop — which is what makes the
 positions learnable.
 

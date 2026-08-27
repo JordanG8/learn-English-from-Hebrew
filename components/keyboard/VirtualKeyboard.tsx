@@ -309,9 +309,22 @@ export function VirtualKeyboard({
         >
           <div
             dir="ltr"
-            className="mx-auto flex w-full max-w-[1100px] flex-col"
+            /*
+             * THE GRID'S OUTER EDGE. Every cap draws its own right and bottom
+             * line; the top and the left of the whole board are drawn here,
+             * once, so the outermost keys are closed by the same line as the
+             * ones in the middle.
+             */
+            className="mx-auto flex w-full max-w-[1100px] flex-col overflow-hidden rounded-lg"
             style={
               {
+                // The line the whole board is built out of. It is deliberately
+                // solid ink rather than a tint: it is the thing separating one
+                // key from the next now that nothing else does.
+                "--kline": "color-mix(in srgb, var(--color-ink) 42%, transparent)",
+                "--klw": "clamp(2px, 0.55cqw, 4px)",
+                borderTop: "var(--klw) solid var(--kline)",
+                borderLeft: "var(--klw) solid var(--kline)",
                 // 15 keyboard units across, each a share of the row: the board
                 // is exactly as wide as its container, always.
                 "--u": `${100 / 15}%`,
@@ -328,9 +341,7 @@ export function VirtualKeyboard({
                  * phone. Small keys, never hidden keys.
                  */
                 "--kh": "clamp(26px, min(12cqw, 9.5vh), 76px)",
-                // Gap between caps shrinks with them, or thin boards lose their
-                // key area to padding.
-                "--kp": "clamp(1.5px, 0.4cqw, 4px)",
+
               } as CSSProperties
             }
           >

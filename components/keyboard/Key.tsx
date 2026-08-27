@@ -96,6 +96,14 @@ export function Key({
   // to be able to find Shift while being tested on where "R" lives.
   const showLegends = reveal || isModifier;
 
+  /*
+   * Dimming is applied to the LEGENDS, never to the cell. Fading the whole
+   * button would fade the line it shares with its neighbours, and that line is
+   * now the board's structure: it has to hold at full strength across a
+   * spotlit key, a dimmed one and everything between.
+   */
+  const dimmed = state === "dim" ? "opacity-50" : "";
+
   const finger = FINGER_COLORS[cap.finger];
   const fingerInk = FINGER_INK[cap.finger];
 
@@ -113,11 +121,10 @@ export function Key({
           ? undefined
           : {
               // Width is a share of the 15-unit row, so the board is always
-              // exactly as wide as its container — no scrolling, ever. Padding
-              // scales with the caps so a narrow screen does not spend its key
-              // area on gaps.
+              // exactly as wide as its container — no scrolling, ever. There
+              // is no padding: the caps meet, and the line where they meet is
+              // the edge of both. See the button below.
               width: `calc(var(--u) * ${cap.width ?? 1})`,
-              padding: "var(--kp, 3px)",
             }
       }
     >
@@ -139,26 +146,47 @@ export function Key({
         onPointerCancel={onRelease}
         className={[
           "relative flex h-full w-full select-none flex-col items-center justify-center",
-          "border-2 font-bold",
-          tile ? "rounded-xl" : "",
+          "font-bold",
+          tile ? "rounded-xl border-2 border-brand-soft" : "",
           tile ? "min-h-[76px] text-3xl" : "",
-          "transition-[transform,background-color,border-color,box-shadow] duration-[60ms] ease-out",
+          "transition-[background-color,box-shadow,color] duration-[60ms] ease-out",
           pressed
-            ? "-translate-y-0 scale-95 border-go bg-go text-white shadow-[0_0_0_5px_var(--color-go-soft)]"
+            ? "bg-go text-white"
             : state === "highlight"
               // The one key the step is about. It has to win against forty-
               // seven others at a glance, so it takes the brand fill outright
-              // rather than a tint of it, and keeps the gold ring.
-              ? "border-brand bg-brand text-white shadow-[0_0_0_5px_var(--color-star)]"
-              : state === "dim"
-                ? "border-brand-soft/50 bg-card text-ink opacity-55"
-                : "border-brand-soft bg-card text-ink",
-          "shadow-[0_3px_0_rgba(0,0,0,0.10)] active:shadow-none",
+              // rather than a tint of it.
+              ? "bg-brand text-white"
+              : "bg-card text-ink",
         ].join(" ")}
         style={{
           height: tile ? undefined : "var(--kh, 44px)",
-          // A fixed 12px radius eats a 22px cap alive; scale it with the key.
-          borderRadius: tile ? undefined : "calc(var(--kh, 44px) * 0.2)",
+          /*
+           * THE GRID.
+           *
+           * The caps used to be rounded tiles floating in their own padding,
+           * which spent a fifth of a narrow board on gaps and shrank every
+           * key to pay for them. They are now cells: square corners, no
+           * padding, and ONE line between neighbours — each cap draws its
+           * right and bottom edge and inherits its left and top from the cap
+           * beside and above it (the board itself closes the top and left of
+           * the whole grid). That line is the structure, so it is drawn to be
+           * seen rather than hinted at.
+           */
+          ...(tile
+            ? null
+            : {
+                borderRight: "var(--klw) solid var(--kline)",
+                borderBottom: "var(--klw) solid var(--kline)",
+              }),
+          // The step's key keeps a ring, drawn INSIDE the cell so it cannot
+          // push its neighbours around or break the grid line.
+          boxShadow:
+            state === "highlight" && !pressed
+              ? "inset 0 0 0 max(2px, calc(var(--kh, 44px) * 0.075)) var(--color-star)"
+              : pressed
+                ? "inset 0 0 0 max(2px, calc(var(--kh, 44px) * 0.075)) var(--color-go-soft)"
+                : undefined,
           // Every legend below is sized in em, so one declaration keeps the
           // whole cap readable at any scale.
           fontSize: tile ? undefined : "calc(var(--kh, 44px) * 0.4)",
@@ -166,10 +194,12 @@ export function Key({
         }}
       >
         {/* Finger colour band. Colour is one of three channels — the shape and
-            the tooltip text carry the same information. */}
+            the tooltip text carry the same information. The caps touch now, so
+            the band is inset further than it used to be: at 8% a row of them
+            ran together into one continuous stripe along the grid line. */}
         {showFingers && (
           <span
-            className="pointer-events-none absolute inset-x-[8%] top-0 flex h-[0.18em] min-h-[3px] items-center justify-center rounded-b-md text-[0.3em] leading-none"
+            className="pointer-events-none absolute inset-x-[16%] top-0 flex h-[0.18em] min-h-[3px] items-center justify-center rounded-b-md text-[0.3em] leading-none"
             style={{ background: finger, color: fingerInk }}
             title={`${FINGER_LABELS[cap.finger].he} · ${FINGER_LABELS[cap.finger].en}`}
             aria-hidden="true"
@@ -179,18 +209,20 @@ export function Key({
         )}
 
         {isModifier || isSpace ? (
-          <span className="ltr overflow-hidden text-[0.78em] font-black leading-none">
+          <span
+            className={`ltr overflow-hidden text-[0.78em] font-black leading-none ${dimmed}`}
+          >
             {isSpace ? "␣" : cap.en.lower}
           </span>
         ) : showLegends ? (
-          <span className="flex h-full w-full items-center justify-center">
+          <span className={`flex h-full w-full items-center justify-center ${dimmed}`}>
             {/* The active layout's character: centred, black, as big as the
                 cap allows. This is the thing being hunted for. */}
             <span
               className={[
                 activeIsHe ? "rtl" : "ltr",
                 "absolute font-black leading-none",
-                tile ? "text-[1.05em]" : "text-[1.42em]",
+                tile ? "text-[1em]" : "text-[1.22em]",
               ].join(" ")}
             >
               {primary}
