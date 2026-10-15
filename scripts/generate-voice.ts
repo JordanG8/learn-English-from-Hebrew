@@ -97,6 +97,8 @@ const EN_SWITCH = "[switches to a clear American English accent]";
 const GAP_SOUND_S = 0.6;
 const GAP_PASS_S = 1.1;
 const GAP_INTRO_S = 0.7;
+/** "זאת האות …, הצליל שלה הוא…" takes 2.7–3.9 s; past this it has been repeated. */
+const INTRO_SENTENCE_MAX_S = 4.4;
 const TARGET_LUFS = -18;
 const PEAK_LIMIT = 0.84; // ≈ -1.5 dBFS
 const LEAD_S = 0.03;
@@ -270,6 +272,12 @@ const NAME_INPUTS: Record<string, string[]> = {
   O: ["O", "oh"],
   U: ["U", "you"],
 };
+/** Each name written as a word, for the voice that will not say a bare capital. */
+const NAME_SPELLED: Record<string, string> = {
+  A: "ay", B: "bee", C: "see", D: "dee", E: "ee", F: "eff", G: "gee", H: "aitch", I: "eye",
+  J: "jay", K: "kay", L: "el", M: "em", N: "en", O: "oh", P: "pee", Q: "cue", R: "are",
+  S: "ess", T: "tee", U: "you", V: "vee", W: "double-you", X: "ex", Y: "why", Z: "zee",
+};
 const NAME_IPA: Record<string, string[]> = {
   A: ["eɪ"], B: ["bi"], C: ["si"], D: ["di"], E: ["i"], F: ["ɛf", "ef"], G: ["dʒi"],
   H: ["eɪtʃ", "etʃ"], I: ["aɪ"], J: ["dʒeɪ"], K: ["keɪ"], L: ["ɛl", "el"], M: ["ɛm", "em"],
@@ -282,6 +290,8 @@ const NAME_IPA: Record<string, string[]> = {
 function hebrewForSpeech(text: string): string {
   return text
     .replace(/Alt\s*\+\s*Shift/g, "אַלְט וְשִׁיפְט")
+    // words the voice vocalises wrongly without their vowels
+    .replace(/לחץ!/g, "לְחַץ!")
     .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}␣]/gu, "")
     .replace(/\s+([.,!?…])/g, "$1")
     .replace(/\s{2,}/g, " ")
@@ -352,7 +362,7 @@ function normalise(ipa: string): string {
   s = s
     .replace(/ɡ/g, "g").replace(/ʤ/g, "dʒ").replace(/ʧ/g, "tʃ").replace(/ɫ/g, "l")
     .replace(/[rɻɾ]/g, "ɹ").replace(/ɚ/g, "əɹ").replace(/ɜː?ɹ/g, "ɝ")
-    .replace(/[ːˑʰʷʲˈˌ.'’\/\[\]\s()-]/g, "");
+    .replace(/[ːˑʰʷʲʔˈˌ.'’\/\[\]\s()-]/g, "");
   // a trailing breath is how every isolated sound ends; it is not a sound
   if (s.length > 1) s = s.replace(/h+$/, "");
   return s;
@@ -409,7 +419,13 @@ function planFor(line: VoiceLine): Plan {
       line,
       lang: "en",
       kind: "clip",
-      inputs: (NAME_INPUTS[L] ?? [L]).map((x) => `${WORD_TAG} ${x}`),
+      // Warm first; bare and spelled-out when the tag makes the voice linger
+      // (B, V and X ran past 1.6 s with it) or say the name twice (A).
+      inputs: [
+        ...(NAME_INPUTS[L] ?? [L]).map((x) => `${WORD_TAG} ${x}`),
+        ...(NAME_INPUTS[L] ?? [L]),
+        ...(NAME_SPELLED[L] ? [NAME_SPELLED[L]!] : []),
+      ],
       check: (j) => {
         const n = normalise(j.ipa);
         const good = want.some((w) => normalise(w) === n);
@@ -488,6 +504,10 @@ function planFor(line: VoiceLine): Plan {
     const ph = letterPhoneme(letter)!;
     const carrier = letterIntroText(d.nameHe);
     const want = hebrewLetters(carrier);
+    // The listener may write the letter's name in Latin ("W" for
+    // דָּאבֶּל־יוּ), which is not an error — so the sentence is also compared
+    // without the name, and the better match counts.
+    const wantNoName = hebrewLetters(letterIntroText(""));
     return {
       line,
       lang: "he",
@@ -505,12 +525,15 @@ function planFor(line: VoiceLine): Plan {
       check: (j) => {
         const spoken = (j.other_words ?? []).filter((w) => w && w.trim());
         if (spoken.length) return { ok: false, why: `words said aloud: "${spoken.join(" ")}"`, score: 0 };
-        const sim = similarity(hebrewLetters(j.hebrew ?? ""), want);
+        const heard = hebrewLetters(j.hebrew ?? "");
+        const sim = Math.max(similarity(heard, want), similarity(heard, wantNoName));
         const sound = PHONEME_OK[ph].test(normalise(j.sound_ipa ?? ""));
         const accent = (j.accent ?? "").toLowerCase();
         const foreign = accent.includes("clearly") || accent === "foreign";
-        const good = sim >= 0.8 && sound && !foreign;
-        const why = `${Math.round(sim * 100)}% Hebrew match, sound /${j.sound_ipa}/${sound ? "" : ` (want /${PHONEMES[ph].ipa}/)`}, accent ${j.accent || "?"}${sim < 0.8 ? ` — heard "${j.hebrew}"` : ""}`;
+        // 0.9, not 0.8: the sentence is short, so saying part of it twice
+        // ("זאת האות פִּי… זאת האות פִּי, הצליל…") only drops the match to ~0.83.
+        const good = sim >= 0.9 && sound && !foreign;
+        const why = `${Math.round(sim * 100)}% Hebrew match, sound /${j.sound_ipa}/${sound ? "" : ` (want /${PHONEMES[ph].ipa}/)`}, accent ${j.accent || "?"}${sim < 0.9 ? ` — heard "${j.hebrew}"` : ""}`;
         return graded(good, { ...j, quality: j.intonation }, why);
       },
     };
@@ -1111,6 +1134,10 @@ function finishPerformance(file: string, plan: Plan, passes: number): [number, n
     if (!last) return null;
     const after = (pcm.length - last.to) / SR;
     if (after < 0.12 || after > 1.8) return null;
+    // Every intro says the same short sentence — 2.7 to 3.9 s across the
+    // alphabet. Much longer means part of it was said twice, which a lenient
+    // listener can miss and a stopwatch cannot.
+    if (last.from / SR > INTRO_SENTENCE_MAX_S) return null;
     put(pcm.subarray(0, last.from), false);
     gap(Math.max((last.to - last.from) / SR, GAP_INTRO_S));
     put(pcm.subarray(last.to), true);
@@ -1157,10 +1184,10 @@ function attemptsFor(plan: Plan): { input: string; seed: number }[] {
   // so they get more seeds.
   const seeds =
     plan.kind !== "clip"
-      ? [11, 23, 37, 51, 67, 79, 97, 113]
+      ? [11, 23, 37, 51, 67, 79, 97, 113, 131, 149, 163, 181, 199, 211, 229, 241]
       : plan.lang === "he"
-        ? [11, 23, 37, 51]
-        : [11, 23, 37];
+        ? [11, 23, 37, 51, 67, 79]
+        : [11, 23, 37, 51];
   const list: { input: string; seed: number }[] = [];
   // Clips exhaust one way of asking before trying the next; performances
   // alternate, because their failures are random rather than systematic.
@@ -1169,7 +1196,7 @@ function attemptsFor(plan: Plan): { input: string; seed: number }[] {
   } else {
     for (const seed of seeds) for (const input of plan.inputs) list.push({ input, seed });
   }
-  return list.slice(0, plan.kind !== "clip" ? 8 : 6);
+  return list.slice(0, plan.kind !== "clip" ? 16 : 9);
 }
 
 async function main() {
@@ -1273,7 +1300,15 @@ async function main() {
             marks = null;
           }
           if (marks) a.marks = marks;
-          else a.verdict = { ...a.verdict, ok: false, why: `${a.verdict.why} — but its pauses do not split cleanly into those sounds` };
+          else
+            a.verdict = {
+              ...a.verdict,
+              ok: false,
+              why:
+                s.plan.kind === "intro"
+                  ? `${a.verdict.why} — but the sentence runs long or will not split from the sound (repeated?)`
+                  : `${a.verdict.why} — but its pauses do not split cleanly into those sounds`,
+            };
         }
         if (a.verdict.ok) s.done = true;
         console.log(`  ${a.verdict.ok ? "✓" : "✗"} ${s.plan.line.id}: ${a.verdict.why}`);

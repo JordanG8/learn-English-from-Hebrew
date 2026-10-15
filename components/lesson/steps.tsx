@@ -358,9 +358,12 @@ export function WordIntroView({ step, onAdvance }: StepRenderProps & { step: Wor
     const marks = lineMarks(id);
     if (isRecorded(id) && marks && marks.length === 2 * k + 1) {
       const [ws, we] = marks[2 * k]!;
+      let wordStarted = false;
       await followLine(id, (i) => {
         if (mine !== run.current) return;
-        if (i < 0) return quiet();
+        // After the word the tiles stay lit — only the mouth goes still.
+        if (i < 0) return wordStarted ? setSpeaking(false) : quiet();
+        if (i === 2 * k) wordStarted = true;
         if (i < 2 * k) return showSeg(i % k);
         setLit({ kind: "word" });
         setSpeaking(true);
