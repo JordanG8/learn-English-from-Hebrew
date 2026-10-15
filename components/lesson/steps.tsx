@@ -48,7 +48,6 @@ import {
 import {
   PHONEMES,
   letterMouth,
-  letterPhoneme,
   mouthSrc,
   phonemeOnType,
   segmentsFor,
