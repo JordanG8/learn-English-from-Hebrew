@@ -272,6 +272,16 @@ const NAME_INPUTS: Record<string, string[]> = {
   O: ["O", "oh"],
   U: ["U", "you"],
 };
+/**
+ * The first sound of the names that start with a consonant — the part a Hebrew
+ * reader of the transliteration gets wrong ("גֵ׳יי" read as "gay"). W and Y are
+ * left out: Hebrew has no /w/, and an Israeli "vai" for Y is how children here
+ * will hear it said anyway.
+ */
+const NAME_ONSET: Record<string, string> = {
+  B: "b", C: "s", D: "d", G: "dʒ", J: "dʒ", K: "k", P: "p", Q: "k", T: "t", V: "v", Z: "z",
+};
+
 /** Each name written as a word, for the voice that will not say a bare capital. */
 const NAME_SPELLED: Record<string, string> = {
   A: "ay", B: "bee", C: "see", D: "dee", E: "ee", F: "eff", G: "gee", H: "aitch", I: "eye",
@@ -333,7 +343,9 @@ interface Judged {
   word?: string;
   /** intros: the Hebrew sentence, and the sound after it */
   hebrew?: string;
+  name_ipa?: string;
   sound_ipa?: string;
+  sound_count?: number;
   intonation?: number;
   extra?: string;
   /** any words heard that are not part of the line — e.g. a direction read aloud */
@@ -517,14 +529,32 @@ function planFor(line: VoiceLine): Plan {
       // ways of asking, rotated with the seeds, give it three different
       // chances not to. (Without the switch, R comes out as a Hebrew ר — the
       // check catches that, and the next way of asking is tried.)
-      inputs: [
-        `${INTRO_TAG} ${carrier.replace("…", "...")} ${EN_SWITCH} ${PERF[ph]}.`,
-        `${INTRO_TAG} ${carrier.replace("…", "...")}\n${EN_SWITCH} ${PERF[ph]}.`,
-        `${INTRO_TAG} ${carrier.replace("…", "...")} ${PERF[ph]}.`,
-      ],
+      // The letter written as itself ("זאת האות J") is read with the right
+      // name and, it turned out, rarely repeated; the Hebrew transliteration
+      // is what the SCREEN shows. For J it goes first: "גֵ׳יי" is read "gay".
+      inputs: (() => {
+        const latin = `${INTRO_TAG} ${letterIntroText(letter).replace("…", "...")} ${EN_SWITCH} ${PERF[ph]}.`;
+        const list = [
+          `${INTRO_TAG} ${carrier.replace("…", "...")} ${EN_SWITCH} ${PERF[ph]}.`,
+          `${INTRO_TAG} ${carrier.replace("…", "...")}\n${EN_SWITCH} ${PERF[ph]}.`,
+          `${INTRO_TAG} ${carrier.replace("…", "...")} ${PERF[ph]}.`,
+          latin,
+        ];
+        return letter === "J" ? [latin, ...list.slice(0, 3)] : list;
+      })(),
       check: (j) => {
         const spoken = (j.other_words ?? []).filter((w) => w && w.trim());
         if (spoken.length) return { ok: false, why: `words said aloud: "${spoken.join(" ")}"`, score: 0 };
+        // The sound said twice — once tacked onto the Hebrew, once in English —
+        // reads perfectly as text; only asking for the count catches it.
+        if (typeof j.sound_count === "number" && j.sound_count !== 1) {
+          return { ok: false, why: `the sound is said ${j.sound_count} times`, score: 0 };
+        }
+        // A name that starts with the wrong consonant ("gay" for J).
+        const nameStart = NAME_ONSET[letter];
+        if (nameStart && j.name_ipa && !normalise(j.name_ipa).startsWith(nameStart)) {
+          return { ok: false, why: `name said /${j.name_ipa}/, want it to start /${nameStart}/`, score: 0 };
+        }
         const heard = hebrewLetters(j.hebrew ?? "");
         const sim = Math.max(similarity(heard, want), similarity(heard, wantNoName));
         const sound = PHONEME_OK[ph].test(normalise(j.sound_ipa ?? ""));
@@ -631,7 +661,7 @@ Return ONLY a JSON array, one object per clip, in the order given:
 const INTRO_PROMPT = `You are a native Israeli Hebrew speaker and an English phonics teacher. Each clip is a teacher introducing an English letter to a young Israeli child: a Hebrew sentence, then the English SOUND the letter makes. You are NOT told the script.
 Be precise about the final sound: an English /ɹ/ is not a Hebrew ר /ʁ/, an English /æ/ is not a Hebrew /a/, and a letter NAME is not a sound.
 Return ONLY a JSON array, one object per clip, in the order given:
-{"file": "<file name>", "hebrew": "<the Hebrew heard, verbatim, in Hebrew script>", "sound_ipa": "<broad IPA of the final English sound only>", "other_words": ["<every word heard that is not the Hebrew sentence or the final sound — e.g. English words or instructions said aloud; empty if none>"], "extra": "<repeats, stutters — else empty>", "accent": "<native Israeli | slight foreign | clearly foreign>", "intonation": <1-10: warm, inviting, human>, "notes": "<short>"}`;
+{"file": "<file name>", "hebrew": "<the Hebrew heard, verbatim, in Hebrew script>", "name_ipa": "<broad IPA of how the English letter's NAME is pronounced in the sentence>", "sound_ipa": "<broad IPA of the final English sound only>", "sound_count": <how many times that sound is said in the clip, counting any time it is already said at the end of the Hebrew>, "other_words": ["<every word heard that is not the Hebrew sentence or the final sound — e.g. English words or instructions said aloud; empty if none>"], "extra": "<repeats, stutters — else empty>", "accent": "<native Israeli | slight foreign | clearly foreign>", "intonation": <1-10: warm, inviting, human>, "notes": "<short>"}`;
 
 const PROMPT: Record<Kind, string> = { clip: JUDGE_PROMPT, soundout: SOUNDOUT_PROMPT, intro: INTRO_PROMPT };
 
@@ -1153,6 +1183,67 @@ function finishPerformance(file: string, plan: Plan, passes: number): [number, n
   return marks;
 }
 
+/**
+ * THE INTRO OF LAST RESORT. For a few letters the voice says the sentence
+ * twice in every take, however it is asked — A and T did, sixteen times each.
+ * Those are lessons two and three, which cannot open on a bare sound. So the
+ * sentence is made on its own (it passes easily), checked like any Hebrew
+ * line plus the same length limit, and the sound — already verified, the very
+ * clip every keypress plays — follows it after the same pause. The join is at
+ * a pause, so nothing is cut mid-word.
+ */
+async function spliceIntro(plan: Plan): Promise<{ file: string; marks: [number, number][]; why: string } | null> {
+  const letter = plan.line.id.slice("narration-intro-".length);
+  const d = LETTERS.find((l) => l.letter === letter)!;
+  const ph = plan.phoneme!;
+  const sound = path.join(OUT_DIR, `phoneme-${ph}.mp3`);
+  if (!existsSync(sound)) return null;
+  const want = hebrewLetters(letterIntroText(d.nameHe));
+  const wantNoName = hebrewLetters(letterIntroText(""));
+  // With vowel points on the name ("אֵיי", "טִי") the voice said the sentence
+  // twice on every seed; written plain it often did not. Three wordings,
+  // rotated across the seeds.
+  const plainName = d.nameHe.normalize("NFD").replace(/[\u0591-\u05C7]/g, "");
+  const wordings = [
+    letterIntroText(letter).replace("…", "..."),
+    letterIntroText(d.nameHe).replace("…", "..."),
+    letterIntroText(plainName).replace("…", ""),
+    letterIntroText(plainName).replace("…", "..."),
+  ];
+  const tries = [11, 23, 37, 51, 67].flatMap((seed) => wordings.map((w, i) => ({ seed, w, i })));
+  for (const { seed, w, i } of tries) {
+    const take = path.join(CACHE, "takes", `${plan.line.id}--carrier-${seed}-${i}.mp3`);
+    try {
+      preparePerformance(await synth(`${INTRO_TAG} ${w}`, "he", seed), take);
+    } catch {
+      continue;
+    }
+    const len = probeDuration(take);
+    if (len > INTRO_SENTENCE_MAX_S + LEAD_S + 0.1) continue;
+    const [j] = await judge([take], JUDGE_PROMPT);
+    if (!j) continue;
+    const heard = hebrewLetters(j.text ?? "");
+    const sim = Math.max(similarity(heard, want), similarity(heard, wantNoName));
+    const foreign = (j.accent ?? "").toLowerCase().includes("clearly");
+    if (sim < 0.9 || foreign || (j.quality ?? 0) < 7 || /[A-Za-z]{3,}/.test(j.text ?? "")) continue;
+    const pcmA = decode(take);
+    const gap = new Float32Array(Math.round(GAP_INTRO_S * SR));
+    const pcmB = decode(sound);
+    const out = new Float32Array(pcmA.length + gap.length + pcmB.length);
+    out.set(pcmA, 0);
+    out.set(pcmB, pcmA.length + gap.length);
+    const file = path.join(CACHE, "takes", `${plan.line.id}--spliced.mp3`);
+    encode(out, file);
+    const start = Math.round(((pcmA.length + gap.length) / SR) * 1000);
+    return {
+      file,
+      marks: [[start, start + Math.round((pcmB.length / SR) * 1000)]],
+      why: `spliced: sentence ${Math.round(sim * 100)}% match, accent ${j.accent || "?"}, quality ${j.quality} + the verified /${PHONEMES[ph].ipa}/ clip`,
+    };
+  }
+  return null;
+}
+
 /* ------------------------------------------------------------------ */
 /* The run                                                              */
 /* ------------------------------------------------------------------ */
@@ -1229,7 +1320,12 @@ async function main() {
   console.log(`${plans.length} lines · ${TTS_MODEL} · voice ${VOICE}${qa ? " · blind QA" : ""}`);
 
   const state = new Map<string, { plan: Plan; queue: { input: string; seed: number }[]; tried: Attempt[]; done: boolean }>();
-  for (const p of plans) state.set(p.line.id, { plan: p, queue: attemptsFor(p), tried: [], done: false });
+  // --skip N: start each line's attempts after the first N — how to get a
+  // different take for a line whose kept one passed but is not wanted.
+  const skip = Number(opt("--skip") ?? 0);
+  for (const p of plans) {
+    state.set(p.line.id, { plan: p, queue: attemptsFor(p).slice(skip), tried: [], done: false });
+  }
 
   for (let round = 1; ; round++) {
     const todo = [...state.values()].filter((s) => !s.done && s.queue.length > 0);
@@ -1330,6 +1426,16 @@ async function main() {
     if (!best) continue;
     const cell = (x: string) => x.replace(/\|/g, "\\|").replace(/\n/g, " ");
     const dest = path.join(OUT_DIR, `${plan.line.id}.mp3`);
+    if (plan.kind === "intro" && !passed) {
+      const spliced = await spliceIntro(plan);
+      if (spliced) {
+        writeFileSync(dest, readFileSync(spliced.file));
+        written.add(plan.line.id);
+        marks.set(plan.line.id, spliced.marks);
+        rows.set(plan.line.id, `| ✅ | \`${plan.line.id}\` | ${tried.length} | (one take kept repeating) | ${cell(spliced.why)} |`);
+        continue;
+      }
+    }
     if (plan.kind !== "clip" && !passed) {
       // A sound-out with the wrong sounds, or an intro that ends on a Hebrew
       // ר, is worse than none: the app plays the separate clips instead.
