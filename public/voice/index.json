@@ -1,5 +1,5 @@
 {
-  "generatedAt": 1792105370613,
+  "generatedAt": 1792107116842,
   "clips": [
     {
       "id": "letter-name-A",
@@ -228,20 +228,20 @@
     {
       "id": "narration-intro-A",
       "url": "/voice/narration-intro-A.mp3",
-      "updatedAt": 1792105404642,
-      "size": 33271,
-      "durationMs": 4127,
+      "updatedAt": 1792106971318,
+      "size": 31808,
+      "durationMs": 3944,
       "marks": [
         [
-          3608,
-          4083
+          3390,
+          3852
         ]
       ]
     },
     {
       "id": "narration-intro-B",
       "url": "/voice/narration-intro-B.mp3",
-      "updatedAt": 1792105148529,
+      "updatedAt": 1792106971318,
       "size": 33062,
       "durationMs": 4101,
       "marks": [
@@ -254,7 +254,7 @@
     {
       "id": "narration-intro-C",
       "url": "/voice/narration-intro-C.mp3",
-      "updatedAt": 1792105148530,
+      "updatedAt": 1792106971318,
       "size": 32017,
       "durationMs": 3971,
       "marks": [
@@ -267,7 +267,7 @@
     {
       "id": "narration-intro-D",
       "url": "/voice/narration-intro-D.mp3",
-      "updatedAt": 1792105148530,
+      "updatedAt": 1792106971318,
       "size": 34316,
       "durationMs": 4258,
       "marks": [
@@ -280,7 +280,7 @@
     {
       "id": "narration-intro-E",
       "url": "/voice/narration-intro-E.mp3",
-      "updatedAt": 1792105148530,
+      "updatedAt": 1792106971318,
       "size": 32017,
       "durationMs": 3971,
       "marks": [
@@ -293,7 +293,7 @@
     {
       "id": "narration-intro-F",
       "url": "/voice/narration-intro-F.mp3",
-      "updatedAt": 1792105148530,
+      "updatedAt": 1792106971318,
       "size": 34734,
       "durationMs": 4310,
       "marks": [
@@ -306,7 +306,7 @@
     {
       "id": "narration-intro-G",
       "url": "/voice/narration-intro-G.mp3",
-      "updatedAt": 1792105148530,
+      "updatedAt": 1792106971318,
       "size": 33689,
       "durationMs": 4180,
       "marks": [
@@ -319,7 +319,7 @@
     {
       "id": "narration-intro-H",
       "url": "/voice/narration-intro-H.mp3",
-      "updatedAt": 1792105148530,
+      "updatedAt": 1792106971318,
       "size": 33689,
       "durationMs": 4180,
       "marks": [
@@ -332,7 +332,7 @@
     {
       "id": "narration-intro-I",
       "url": "/voice/narration-intro-I.mp3",
-      "updatedAt": 1792105148530,
+      "updatedAt": 1792106971322,
       "size": 32853,
       "durationMs": 4075,
       "marks": [
@@ -345,20 +345,20 @@
     {
       "id": "narration-intro-J",
       "url": "/voice/narration-intro-J.mp3",
-      "updatedAt": 1792105148534,
-      "size": 41630,
-      "durationMs": 5172,
+      "updatedAt": 1792106971322,
+      "size": 33480,
+      "durationMs": 4153,
       "marks": [
         [
-          4550,
-          5069
+          3530,
+          4060
         ]
       ]
     },
     {
       "id": "narration-intro-K",
       "url": "/voice/narration-intro-K.mp3",
-      "updatedAt": 1792105148534,
+      "updatedAt": 1792106971322,
       "size": 32644,
       "durationMs": 4049,
       "marks": [
@@ -371,46 +371,46 @@
     {
       "id": "narration-intro-L",
       "url": "/voice/narration-intro-L.mp3",
-      "updatedAt": 1792105148534,
-      "size": 43302,
-      "durationMs": 5381,
+      "updatedAt": 1792106971322,
+      "size": 35570,
+      "durationMs": 4415,
       "marks": [
         [
-          4580,
-          5273
+          3550,
+          4326
         ]
       ]
     },
     {
       "id": "narration-intro-M",
       "url": "/voice/narration-intro-M.mp3",
-      "updatedAt": 1792105148534,
-      "size": 44347,
-      "durationMs": 5512,
+      "updatedAt": 1792106971322,
+      "size": 36824,
+      "durationMs": 4571,
       "marks": [
         [
-          4600,
-          5416
+          3540,
+          4468
         ]
       ]
     },
     {
       "id": "narration-intro-N",
       "url": "/voice/narration-intro-N.mp3",
-      "updatedAt": 1792105148534,
-      "size": 44138,
-      "durationMs": 5486,
+      "updatedAt": 1792106971322,
+      "size": 37033,
+      "durationMs": 4598,
       "marks": [
         [
-          4650,
-          5387
+          3620,
+          4508
         ]
       ]
     },
     {
       "id": "narration-intro-O",
       "url": "/voice/narration-intro-O.mp3",
-      "updatedAt": 1792105148534,
+      "updatedAt": 1792106971326,
       "size": 34734,
       "durationMs": 4310,
       "marks": [
@@ -423,7 +423,7 @@
     {
       "id": "narration-intro-P",
       "url": "/voice/narration-intro-P.mp3",
-      "updatedAt": 1792105148534,
+      "updatedAt": 1792106971326,
       "size": 32853,
       "durationMs": 4075,
       "marks": [
@@ -436,7 +436,7 @@
     {
       "id": "narration-intro-Q",
       "url": "/voice/narration-intro-Q.mp3",
-      "updatedAt": 1792105148534,
+      "updatedAt": 1792106971326,
       "size": 34525,
       "durationMs": 4284,
       "marks": [
@@ -449,7 +449,7 @@
     {
       "id": "narration-intro-R",
       "url": "/voice/narration-intro-R.mp3",
-      "updatedAt": 1792105148538,
+      "updatedAt": 1792106971326,
       "size": 34943,
       "durationMs": 4336,
       "marks": [
@@ -462,20 +462,20 @@
     {
       "id": "narration-intro-S",
       "url": "/voice/narration-intro-S.mp3",
-      "updatedAt": 1792105148538,
-      "size": 41213,
-      "durationMs": 5120,
+      "updatedAt": 1792106971326,
+      "size": 35988,
+      "durationMs": 4467,
       "marks": [
         [
-          4320,
-          5029
+          3610,
+          4363
         ]
       ]
     },
     {
       "id": "narration-intro-T",
       "url": "/voice/narration-intro-T.mp3",
-      "updatedAt": 1792105422050,
+      "updatedAt": 1792106987698,
       "size": 28256,
       "durationMs": 3500,
       "marks": [
@@ -488,7 +488,7 @@
     {
       "id": "narration-intro-U",
       "url": "/voice/narration-intro-U.mp3",
-      "updatedAt": 1792105148538,
+      "updatedAt": 1792106987698,
       "size": 33689,
       "durationMs": 4180,
       "marks": [
@@ -501,20 +501,20 @@
     {
       "id": "narration-intro-V",
       "url": "/voice/narration-intro-V.mp3",
-      "updatedAt": 1792105148538,
-      "size": 42257,
-      "durationMs": 5251,
+      "updatedAt": 1792106987698,
+      "size": 34316,
+      "durationMs": 4258,
       "marks": [
         [
-          4380,
-          5149
+          3470,
+          4158
         ]
       ]
     },
     {
       "id": "narration-intro-W",
       "url": "/voice/narration-intro-W.mp3",
-      "updatedAt": 1792105148538,
+      "updatedAt": 1792106987698,
       "size": 35779,
       "durationMs": 4441,
       "marks": [
@@ -527,7 +527,7 @@
     {
       "id": "narration-intro-X",
       "url": "/voice/narration-intro-X.mp3",
-      "updatedAt": 1792105148538,
+      "updatedAt": 1792106987698,
       "size": 32853,
       "durationMs": 4075,
       "marks": [
@@ -540,26 +540,26 @@
     {
       "id": "narration-intro-Y",
       "url": "/voice/narration-intro-Y.mp3",
-      "updatedAt": 1792105148538,
+      "updatedAt": 1792106987702,
       "size": 32853,
       "durationMs": 4075,
       "marks": [
         [
-          3490,
-          3967
+          3480,
+          3977
         ]
       ]
     },
     {
       "id": "narration-intro-Z",
       "url": "/voice/narration-intro-Z.mp3",
-      "updatedAt": 1792105148538,
-      "size": 44138,
-      "durationMs": 5486,
+      "updatedAt": 1792107018922,
+      "size": 34943,
+      "durationMs": 4336,
       "marks": [
         [
-          4610,
-          5377
+          3732,
+          4297
         ]
       ]
     },
@@ -2225,45 +2225,45 @@
     {
       "id": "soundout-CLOCK",
       "url": "/voice/soundout-CLOCK.mp3",
-      "updatedAt": 1792104262726,
-      "size": 84889,
-      "durationMs": 10580,
+      "updatedAt": 1792107116842,
+      "size": 85307,
+      "durationMs": 10632,
       "marks": [
         [
           30,
-          370
+          350
         ],
         [
-          970,
-          1780
+          950,
+          2390
         ],
         [
-          2380,
-          3190
+          2990,
+          3260
         ],
         [
-          3790,
-          3960
+          3860,
+          3990
         ],
         [
-          5060,
-          5360
+          5090,
+          5380
         ],
         [
-          5960,
-          6660
+          5980,
+          7230
         ],
         [
-          7260,
-          8060
+          7830,
+          8110
         ],
         [
-          8660,
-          8800
+          8710,
+          8810
         ],
         [
-          9900,
-          10485
+          9910,
+          10542
         ]
       ]
     },
