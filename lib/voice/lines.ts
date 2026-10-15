@@ -24,7 +24,8 @@
  *    recording is incomplete.
  */
 
-import { LETTERS } from "@/lib/curriculum/alphabet";
+import { LETTERS, letterIntroText } from "@/lib/curriculum/alphabet";
+import { LETTER_PHONEME, PHONEMES, PHONEME_IDS, type PhonemeId } from "@/lib/phonics";
 import { WORDS } from "@/lib/curriculum/words";
 import { SENTENCES } from "@/lib/curriculum/sentences";
 import { LESSONS, TUTORIAL_LESSON } from "@/lib/curriculum/lessons";
@@ -32,8 +33,9 @@ import type { TutorialStep } from "@/lib/types";
 
 export type VoiceGroupId =
   | "narration"
+  | "letter-intro"
   | "letter-name"
-  | "letter-sound"
+  | "phoneme"
   | "word"
   | "sentence"
   | "lesson-card";
@@ -75,8 +77,20 @@ export interface VoiceGroup {
 export const letterNameLineId = (letter: string): string =>
   `letter-name-${letter.toUpperCase()}`;
 
+/**
+ * One recording per SOUND, not per letter: C and K both play /k/, and the A in
+ * CAT plays the very same clip the letter A lesson does. A letter's sound is
+ * just the phoneme it teaches — see LETTER_PHONEME in lib/phonics.ts.
+ */
+export const phonemeLineId = (ph: PhonemeId): string => `phoneme-${ph}`;
+
 export const letterSoundLineId = (letter: string): string =>
-  `letter-sound-${letter.toUpperCase()}`;
+  phonemeLineId(LETTER_PHONEME[letter.toUpperCase()] ?? "a");
+
+/** The short Hebrew introduction a letter lesson opens with. */
+export const letterIntroLineId = (letter: string): string =>
+  `narration-intro-${letter.toUpperCase()}`;
+
 
 export const wordLineId = (word: string): string =>
   `word-${word.toUpperCase().replace(/[^A-Z0-9]/g, "")}`;
@@ -157,14 +171,36 @@ function letterNameLines(): VoiceLine[] {
   }));
 }
 
-function letterSoundLines(): VoiceLine[] {
+function phonemeLines(): VoiceLine[] {
+  const lettersFor = (ph: PhonemeId) =>
+    Object.entries(LETTER_PHONEME)
+      .filter(([, p]) => p === ph)
+      .map(([l]) => l);
+  return PHONEME_IDS.map((ph, i) => {
+    const d = PHONEMES[ph];
+    const letters = lettersFor(ph);
+    return {
+      id: phonemeLineId(ph),
+      group: "phoneme" as const,
+      lang: "en" as const,
+      text: `/${d.ipa}/ — ${d.as}`,
+      directionHe: `הצליל /${d.ipa}/ כמו ב־${d.as}${
+        letters.length ? ` (האות ${letters.join(", ")})` : ""
+      }. רק הצליל — קצר, בלי «ּה» בסוף.`,
+      fallback: { text: d.as, rate: 0.6 },
+      order: i,
+    };
+  });
+}
+
+function letterIntroLines(): VoiceLine[] {
   return LETTERS.map((d, i) => ({
-    id: letterSoundLineId(d.letter),
-    group: "letter-sound" as const,
-    lang: "en" as const,
-    text: d.soundSpeak,
-    directionHe: `הצליל של האות — «${d.soundHe}» ${d.ipa}. קצר, בלי «ּה» בסוף.`,
-    fallback: { text: d.soundSpeak, rate: 0.6 },
+    id: letterIntroLineId(d.letter),
+    group: "letter-intro" as const,
+    lang: "he" as const,
+    text: letterIntroText(d.nameHe),
+    directionHe: "פתיחת שיעור האות - בעברית, חם, ולהשאיר את הסוף פתוח: הצליל עצמו מתנגן מיד אחרי.",
+    fallback: null,
     order: i,
   }));
 }
@@ -221,16 +257,23 @@ export const VOICE_GROUPS: readonly VoiceGroup[] = [
     lines: tutorialLines("walkthrough"),
   },
   {
+    id: "letter-intro",
+    titleHe: "פתיחת האותיות",
+    blurbHe: "«זאת האות איי, הצליל שלה הוא…» — ואז הצליל עצמו.",
+    lines: letterIntroLines(),
+  },
+  {
     id: "letter-name",
     titleHe: "שמות האותיות",
     blurbHe: "איי, בי, סי… — איך קוראים לאות.",
     lines: letterNameLines(),
   },
   {
-    id: "letter-sound",
-    titleHe: "צלילי האותיות",
-    blurbHe: "אַ, בְּ, קְ… — הצליל שהאות עושה. זה מה ש‑TTS הכי מקלקל.",
-    lines: letterSoundLines(),
+    id: "phoneme",
+    titleHe: "צלילים",
+    blurbHe:
+      "סְ, אַ, טְ… — הצליל של כל אות, וגם צלילים של צירופים (sh, ee, oo). מהם בנויה כל מילה כשמפרקים אותה.",
+    lines: phonemeLines(),
   },
   {
     id: "word",

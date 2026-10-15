@@ -206,6 +206,15 @@ export const TEACHING_ORDER: readonly string[] = [
   "L", "J", "V", "W", "X", "Y", "Z", "Q",
 ];
 
+/**
+ * What a letter lesson SAYS when it opens, in Hebrew, up to the sound itself:
+ * "זאת האות אֵיי, הצליל שלה הוא…". The sound is not in the sentence — it is
+ * the phoneme recording, played straight after, so the child hears the same
+ * /s/ here as on every keypress and in every word.
+ */
+export const letterIntroText = (nameHe: string): string =>
+  `זאת האות ${nameHe}, הצליל שלה הוא…`;
+
 const BY_LETTER = new Map(LETTERS.map((l) => [l.letter, l]));
 
 export function getLetter(letter: string): LetterData | undefined {

@@ -17,6 +17,7 @@ export {
   getLetter,
   lettersUpTo,
   distractorsFor,
+  letterIntroText,
 } from "./alphabet";
 export {
   WORDS,
@@ -52,6 +53,7 @@ export {
   shapeStep,
   keyStep,
   wordStep,
+  wordIntroStep,
   sentenceStep,
   skillsForStep,
 } from "./lessons";

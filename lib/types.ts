@@ -82,6 +82,8 @@ export interface Lesson {
 
 export type Step =
   | TutorialStep
+  | LetterIntroStep
+  | WordIntroStep
   | PressKeyStep
   | BuildWordStep
   | BuildSentenceStep
@@ -105,6 +107,31 @@ export interface TutorialStep extends StepCommon {
   target: string | null;
   /** What the learner must do to advance. "tap-target" forces real interaction. */
   advanceOn: "tap-target" | "press-any-key" | "next-button";
+}
+
+/**
+ * ADDED (phonics): how a letter lesson opens. The letter, the mouth that makes
+ * its sound, and one Hebrew sentence — "זאת האות איי, הצליל שלה הוא…" — that
+ * ends on the sound itself. Nothing else: the explaining is done by hearing
+ * it, and by the steps that follow.
+ */
+export interface LetterIntroStep extends StepCommon {
+  type: "letter-intro";
+  letter: string;
+}
+
+/**
+ * ADDED (phonics): the first time a word appears. The word is shown spelled
+ * out, then sounded out twice — each sound playing while the letters that
+ * make it are lit, with the mouth for it — and only then said whole. The
+ * pieces come from lib/phonics.ts, the same table the keyboard plays from.
+ */
+export interface WordIntroStep extends StepCommon {
+  type: "word-intro";
+  /** Uppercase, e.g. "SUN". */
+  word: string;
+  he: string;
+  emoji: string;
 }
 
 export interface PressKeyStep extends StepCommon {
@@ -158,7 +185,15 @@ export interface BuildSentenceStep extends StepCommon {
 export interface LetterSoundStep extends StepCommon {
   type: "letter-sound";
   letter: string;              // "A"
-  /** The correct answer among `options`. */
+  /**
+   * The correct answer among `options`.
+   *
+   * CHANGED (phonics): in `mode: "sound"` the options are LETTERS, and what
+   * the child chooses between is the sound each one makes — four speaker
+   * buttons, not four strings of Hebrew. In `mode: "name"` they are still the
+   * letter names written in Hebrew. Steps are generated from code at play
+   * time and never stored, so no saved profile carries the old shape.
+   */
   answer: string;
   options: string[];
   mode: "name" | "sound";
