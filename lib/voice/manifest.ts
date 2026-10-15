@@ -24,6 +24,15 @@ export interface VoiceClip {
   size: number;
   /** Where it came from. "bundled" clips cannot be deleted from the studio. */
   source: "store" | "bundled";
+  /** Length in ms, when the generator measured it. */
+  durationMs?: number;
+  /**
+   * [start, end] in ms of each spoken piece, for clips that must be followed
+   * along: each sound of a sound-out, or the sound at the end of a letter
+   * intro. Written by scripts/generate-voice.ts; a studio recording has none,
+   * and the screens then fall back to the separate sound clips.
+   */
+  marks?: [number, number][];
 }
 
 export type VoiceManifest = Record<string, VoiceClip>;

@@ -44,7 +44,8 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { VOICE_LINES, type VoiceLine } from "@/lib/voice/lines";
-import { type PhonemeId, segmentsFor } from "@/lib/phonics";
+import { PHONEMES, letterPhoneme, type PhonemeId, segmentsFor } from "@/lib/phonics";
+import { LETTERS, letterIntroText } from "@/lib/curriculum/alphabet";
 
 /* ------------------------------------------------------------------ */
 /* Settings                                                             */
@@ -72,6 +73,30 @@ const HEBREW_TAG = "[speaks fluent native Hebrew, Israeli accent, warm]";
  * blind listener's words, 4/10. The same word with this tag scored 9/10.
  */
 const WORD_TAG = "[warmly, clearly, to a child]";
+/**
+ * PERFORMANCES. A sound-out stitched from separate clips sounded like a
+ * machine reading a list — each piece with its own flat, finished intonation
+ * and a gap measured in milliseconds. So a sound-out, and a letter intro, are
+ * each asked for as ONE take, directed, and only the pauses are touched
+ * afterwards: widened, never shortened, so every sound has room.
+ */
+/**
+ * A DIRECTION, NOT AN INSTRUCTION. Tags that tell the voice what to DO
+ * ("…: exactly twice, then says the word") were sometimes read out loud —
+ * "exactly twice" at the start of a take, before the first sound. A tag that
+ * only describes HOW to sound never was. The voice sometimes sounds a word
+ * out three times instead of two; that is handled after the fact (the last
+ * two passes are kept), not by telling it.
+ */
+const SOUNDOUT_TAG = "[slowly, warmly, like a kind teacher sounding out a word for a young child]";
+const INTRO_TAG =
+  "[speaks fluent native Hebrew, Israeli accent; warm and inviting, like a kind teacher talking to a young child]";
+/** Without it the sound after a Hebrew sentence comes out Hebrew — R as a uvular ר. */
+const EN_SWITCH = "[switches to a clear American English accent]";
+/** Minimum silence between two sounds, between the two passes, and before the sound in an intro. */
+const GAP_SOUND_S = 0.6;
+const GAP_PASS_S = 1.1;
+const GAP_INTRO_S = 0.7;
 const TARGET_LUFS = -18;
 const PEAK_LIMIT = 0.84; // ≈ -1.5 dBFS
 const LEAD_S = 0.03;
@@ -201,6 +226,21 @@ const PHONEME_OK: Record<PhonemeId, RegExp> = {
   ts: /^ts+$/,
 };
 
+/**
+ * How each sound is written INSIDE a performance. Not the same as the
+ * isolated inputs above: in a running line the voice needs a syllable it can
+ * lean on ("kuh"), and a sustained sound reads best as the letter stretched.
+ */
+const PERF: Record<PhonemeId, string> = {
+  a: tag("æ", "a"), e: "eh", i: "ih", o: "ah", u: "uhh",
+  ay: "ay", ee: "ee", igh: "eye", oa: "oh", oo: "ooo", uu: tag("ʊ", "oo"), ow: "ow", aw: "aw",
+  ar: "ar", or: "or", er: "er", air: "air", yoo: "you",
+  b: "buh", d: "duh", f: "Fffff", g: "guh", h: "huh", j: "juh", k: "kuh", l: "Lllll", m: "Mmmmm",
+  n: "Nnnnn", p: "puh", r: "Rrrr", s: "Sssss", t: "tuh", v: "Vvvvv", w: "wuh", y: "yuh", z: "Zzzzz",
+  sh: "Shhhh", ch: "chuh", th: "Thhhh", dh: tag("ðː", "th"), ng: tag("ŋː", "ng"),
+  ks: "kss", kw: "kwuh", ts: "tss",
+};
+
 const CONTINUANTS = new Set<PhonemeId>(["f", "l", "m", "n", "s", "v", "z", "sh", "th", "dh", "ng", "r"]);
 
 /**
@@ -246,12 +286,25 @@ function hebrewForSpeech(text: string): string {
     .trim();
 }
 
+type Kind = "clip" | "soundout" | "intro";
+
+interface Verdict {
+  ok: boolean;
+  why: string;
+  score: number;
+  /** sound-outs: how many correct passes the listener heard before the word */
+  passes?: number;
+}
+
 interface Plan {
   line: VoiceLine;
   inputs: string[];
   lang: "en" | "he";
+  kind: Kind;
   phoneme?: PhonemeId;
-  check: (j: Judged) => { ok: boolean; why: string; score: number };
+  /** For a sound-out: the sounds of one pass, in order. */
+  pass?: PhonemeId[];
+  check: (j: Judged) => Verdict;
 }
 
 interface Judged {
@@ -263,6 +316,16 @@ interface Judged {
   /** 1–10: natural, warm, clean — would you play it to a child. */
   quality?: number;
   notes?: string;
+  /** sound-outs: each separate sound heard, in order, and the word at the end */
+  sounds?: string[];
+  word?: string;
+  /** intros: the Hebrew sentence, and the sound after it */
+  hebrew?: string;
+  sound_ipa?: string;
+  intonation?: number;
+  extra?: string;
+  /** any words heard that are not part of the line — e.g. a direction read aloud */
+  other_words?: string[];
 }
 
 /**
@@ -327,6 +390,7 @@ function planFor(line: VoiceLine): Plan {
     return {
       line,
       lang: "en",
+      kind: "clip",
       phoneme: ph,
       inputs: PHONEME_INPUTS[ph],
       check: (j) => {
@@ -342,6 +406,7 @@ function planFor(line: VoiceLine): Plan {
     return {
       line,
       lang: "en",
+      kind: "clip",
       inputs: (NAME_INPUTS[L] ?? [L]).map((x) => `${WORD_TAG} ${x}`),
       check: (j) => {
         const n = normalise(j.ipa);
@@ -361,6 +426,7 @@ function planFor(line: VoiceLine): Plan {
     return {
       line,
       lang: "en",
+      kind: "clip",
       inputs,
       check: (j) => {
         const heard = lettersOnly(j.text);
@@ -370,14 +436,83 @@ function planFor(line: VoiceLine): Plan {
       },
     };
   }
-  // Hebrew narration: the walkthrough, every lesson card, every letter intro.
+  if (id.startsWith("soundout-")) {
+    const word = id.slice("soundout-".length);
+    const pass = segmentsFor(word)
+      .map((seg) => seg.ph)
+      .filter((x): x is PhonemeId => Boolean(x));
+    const said = pass.map((ph) => PERF[ph]).join(" — ");
+    const lead = said.startsWith("<") ? said : said.charAt(0).toUpperCase() + said.slice(1);
+    const Word = word.charAt(0) + word.slice(1).toLowerCase();
+    return {
+      line,
+      lang: "en",
+      kind: "soundout",
+      pass,
+      inputs: [`${SOUNDOUT_TAG} ${lead}. ${lead}. ${Word}!`],
+      check: (j) => {
+        // Two passes are asked for; the voice sometimes gives three. Any
+        // whole number of CORRECT passes is usable — the last two are kept
+        // (see finishPerformance) — but every sound in every pass must be right.
+        const heard = (j.sounds ?? []).map(normalise);
+        const k = pass.length;
+        const passes = heard.length % k === 0 ? heard.length / k : 0;
+        const wrong = heard.findIndex((h, i) => !PHONEME_OK[pass[i % k]!].test(h));
+        const sameWord = lettersOnly(j.word ?? "") === word.toLowerCase();
+        const spoken = (j.other_words ?? []).filter((w) => w && w.trim());
+        if (spoken.length) {
+          return { ok: false, why: `words said aloud: "${spoken.join(" ")}"`, score: 0, passes };
+        }
+        const good = passes >= 2 && passes <= 4 && wrong < 0 && sameWord;
+        const why = good
+          ? `heard ${(j.sounds ?? []).join("·")} → "${j.word}"${passes > 2 ? ` (${passes} passes; last two kept)` : ""}`
+          : passes < 2
+            ? `heard ${heard.length} sounds, not whole passes of ${k}: ${(j.sounds ?? []).join("·")}${j.extra ? ` (${j.extra})` : ""}`
+            : !sameWord
+              ? `word heard as "${j.word}"`
+              : `sound ${wrong + 1} heard as /${j.sounds?.[wrong]}/, want /${PHONEMES[pass[wrong % k]!].ipa}/`;
+        return { ...graded(good, { ...j, quality: j.intonation }, why), passes };
+      },
+    };
+  }
+  if (id.startsWith("narration-intro-")) {
+    const letter = id.slice("narration-intro-".length);
+    const d = LETTERS.find((l) => l.letter === letter)!;
+    const ph = letterPhoneme(letter)!;
+    const carrier = letterIntroText(d.nameHe);
+    const want = hebrewLetters(carrier);
+    return {
+      line,
+      lang: "he",
+      kind: "intro",
+      phoneme: ph,
+      inputs: [`${INTRO_TAG} ${carrier.replace("…", "...")} ${EN_SWITCH} ${PERF[ph]}.`],
+      check: (j) => {
+        const spoken = (j.other_words ?? []).filter((w) => w && w.trim());
+        if (spoken.length) return { ok: false, why: `words said aloud: "${spoken.join(" ")}"`, score: 0 };
+        const sim = similarity(hebrewLetters(j.hebrew ?? ""), want);
+        const sound = PHONEME_OK[ph].test(normalise(j.sound_ipa ?? ""));
+        const accent = (j.accent ?? "").toLowerCase();
+        const foreign = accent.includes("clearly") || accent === "foreign";
+        const good = sim >= 0.8 && sound && !foreign;
+        const why = `${Math.round(sim * 100)}% Hebrew match, sound /${j.sound_ipa}/${sound ? "" : ` (want /${PHONEMES[ph].ipa}/)`}, accent ${j.accent || "?"}${sim < 0.8 ? ` — heard "${j.hebrew}"` : ""}`;
+        return graded(good, { ...j, quality: j.intonation }, why);
+      },
+    };
+  }
+  // Hebrew narration: the walkthrough and every lesson card.
   const spoken = hebrewForSpeech(line.text);
   const want = hebrewLetters(spoken);
   return {
     line,
     lang: "he",
+    kind: "clip",
     inputs: [`${HEBREW_TAG} ${spoken}`],
     check: (j) => {
+      // English heard in a line with no English in it is a direction read aloud.
+      if (!/[A-Za-z]/.test(spoken) && /[A-Za-z]{3,}/.test(j.text ?? "")) {
+        return { ok: false, why: `English heard in a Hebrew line: "${j.text}"`, score: 0 };
+      }
       const sim = similarity(hebrewLetters(j.text), want);
       const accent = (j.accent ?? "").toLowerCase();
       const foreign = accent.includes("clearly") || accent === "foreign";
@@ -399,15 +534,20 @@ async function post(pathname: string, body: unknown, tries = 4): Promise<Respons
   let last: unknown = null;
   for (let attempt = 0; attempt < tries; attempt++) {
     try {
+      // A request that never answers would hang the whole run; give up on it
+      // and let the retry below ask again.
       const res = await fetch(`https://openrouter.ai/api/v1${pathname}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(90_000),
       });
       if (res.status === 429 || res.status >= 500) {
         last = new Error(`${res.status} ${await res.text()}`);
       } else {
-        return res;
+        // Read the body inside the timeout too: a stalled stream hangs just as well.
+        const buf = await res.arrayBuffer();
+        return new Response(buf, { status: res.status, headers: res.headers });
       }
     } catch (e) {
       last = e;
@@ -446,8 +586,19 @@ Each clip is ONE short recording: an isolated English speech sound, an English l
 Return ONLY a JSON array, one object per clip, in the order given:
 {"file": "<file name>", "lang": "en" | "he", "ipa": "<broad IPA of exactly what is audible, including any extra vowel, breath or words>", "text": "<what was said, written in its own script; for a lone speech sound repeat the IPA>", "accent": "<Hebrew only: native Israeli | slight foreign | clearly foreign>", "quality": <1-10: natural, warm and clean enough to play to a 7-year-old; deduct for flat/robotic delivery, sighs or breathy tails, clicks, theatrical over-acting>, "notes": "<short>"}`;
 
-async function judge(files: string[]): Promise<Judged[]> {
-  const content: unknown[] = [{ type: "text", text: JUDGE_PROMPT }];
+const SOUNDOUT_PROMPT = `You are an experienced early-years English phonics teacher. Each clip is a teacher "sounding out" a word for a young child: separate sounds, twice, then the whole word. You are NOT told the word — never guess it from what it ought to be; report only what is audible.
+Return ONLY a JSON array, one object per clip, in the order given:
+{"file": "<file name>", "sounds": ["<broad IPA of each separate sound, in order, ALL passes>"], "word": "<the whole word at the end>", "other_words": ["<every spoken word that is NOT one of the separate sounds and NOT the final word — e.g. instructions or comments said aloud before, between or after; empty if none>"], "extra": "<anything else odd: stutters, breaths, clicks — else empty>", "intonation": <1-10: does it sound like a real, warm, inviting human teacher, unhurried, with room for each sound>, "notes": "<short>"}`;
+
+const INTRO_PROMPT = `You are a native Israeli Hebrew speaker and an English phonics teacher. Each clip is a teacher introducing an English letter to a young Israeli child: a Hebrew sentence, then the English SOUND the letter makes. You are NOT told the script.
+Be precise about the final sound: an English /ɹ/ is not a Hebrew ר /ʁ/, an English /æ/ is not a Hebrew /a/, and a letter NAME is not a sound.
+Return ONLY a JSON array, one object per clip, in the order given:
+{"file": "<file name>", "hebrew": "<the Hebrew heard, verbatim, in Hebrew script>", "sound_ipa": "<broad IPA of the final English sound only>", "other_words": ["<every word heard that is not the Hebrew sentence or the final sound — e.g. English words or instructions said aloud; empty if none>"], "extra": "<repeats, stutters — else empty>", "accent": "<native Israeli | slight foreign | clearly foreign>", "intonation": <1-10: warm, inviting, human>, "notes": "<short>"}`;
+
+const PROMPT: Record<Kind, string> = { clip: JUDGE_PROMPT, soundout: SOUNDOUT_PROMPT, intro: INTRO_PROMPT };
+
+async function judge(files: string[], prompt = JUDGE_PROMPT): Promise<Judged[]> {
+  const content: unknown[] = [{ type: "text", text: prompt }];
   for (const f of files) {
     content.push({ type: "text", text: `Clip: ${path.basename(f)}` });
     content.push({
@@ -498,6 +649,12 @@ function acoustics(file: string): { dur: number; voiced: number } {
 
 function acousticFloor(plan: Plan, file: string): string | null {
   const { dur, voiced } = acoustics(file);
+  if (plan.kind === "soundout") {
+    const k = plan.pass!.length;
+    const max = (2 * k + 1) * 1.6 + 2 * k * GAP_PASS_S + 3;
+    return dur > max ? `${dur.toFixed(1)}s — longer than two passes and a word (looped?)` : null;
+  }
+  if (plan.kind === "intro") return dur > 9 ? `${dur.toFixed(1)}s — too long (repeated?)` : null;
   const ph = plan.phoneme;
   if (ph) {
     if (VOICELESS.has(ph) && voiced > 0.2) return `voiced ${Math.round(voiced * 100)}% — a hiss should be noise`;
@@ -634,6 +791,180 @@ function processClip(raw: string, out: string, plan: Plan): void {
 }
 
 /* ------------------------------------------------------------------ */
+/* Performances — find the pieces, give them room, mark where they are  */
+/* ------------------------------------------------------------------ */
+
+const SR = 44100;
+
+function decode(file: string): Float32Array {
+  const pcm = spawnSync("ffmpeg", ["-v", "error", "-i", file, "-ac", "1", "-ar", String(SR), "-f", "f32le", "-"], {
+    maxBuffer: 256 * 1024 * 1024,
+  }).stdout as Buffer;
+  return new Float32Array(pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength));
+}
+
+function encode(pcm: Float32Array, out: string): void {
+  const r = spawnSync(
+    "ffmpeg",
+    ["-hide_banner", "-v", "error", "-y", "-f", "f32le", "-ar", String(SR), "-ac", "1", "-i", "-",
+      "-c:a", "libmp3lame", "-b:a", "64k", out],
+    { input: Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength) },
+  );
+  if (r.status !== 0) throw new Error(`encode failed: ${r.stderr}`);
+}
+
+type Span = { from: number; to: number };
+
+/** Every pause inside a take, in samples. */
+function pauses(pcm: Float32Array): Span[] {
+  const n = SR / 100;
+  const rms: number[] = [];
+  for (let i = 0; i + n <= pcm.length; i += n) {
+    let e = 0;
+    for (let k = i; k < i + n; k++) e += pcm[k]! * pcm[k]!;
+    rms.push(Math.sqrt(e / n));
+  }
+  // Deep enough that the breath a voice takes INSIDE a long "fffff" (a dip to
+  // about -40 dB) is not mistaken for the pause between two sounds (-50 dB
+  // and below).
+  const floor = Math.max(...rms) * 10 ** (-45 / 20);
+  const loud = rms.map((r) => r > floor);
+  const first = loud.indexOf(true);
+  const last = loud.lastIndexOf(true);
+  const out: Span[] = [];
+  let i = first;
+  while (i <= last) {
+    if (!loud[i]) {
+      let j = i;
+      while (j <= last && !loud[j]) j++;
+      if (j - i >= 6) out.push({ from: i * n, to: j * n });
+      i = j;
+    } else i++;
+  }
+  return out;
+}
+
+/**
+ * The `k` longest pauses, in time order — but only if they stand clear of the
+ * rest. When the pauses that would be cut are barely longer than the ones that
+ * would not (a stop's closure can look like a pause), a letter could light up
+ * on the wrong sound, so the take is rejected instead of guessed at.
+ */
+function longestPauses(all: Span[], k: number): Span[] | null {
+  if (all.length < k) return null;
+  const size = (g: Span) => g.to - g.from;
+  const bySize = [...all].sort((a, b) => size(b) - size(a));
+  const chosen = bySize.slice(0, k);
+  const smallest = Math.min(...chosen.map(size));
+  const nextBiggest = bySize[k] ? size(bySize[k]!) : 0;
+  if (smallest < 0.12 * SR || nextBiggest > 0.8 * smallest) return null;
+  return chosen.sort((a, b) => a.from - b.from);
+}
+
+/**
+ * Step one of a performance: trimmed and normalised, but otherwise exactly as
+ * the voice performed it — this is what the listener hears and judges.
+ */
+function preparePerformance(raw: string, out: string): void {
+  const tmp = out + ".norm.wav";
+  ff([
+    "-i", raw, "-ac", "1", "-ar", String(SR), "-af",
+    [
+      "silenceremove=start_periods=1:start_threshold=-48dB:start_silence=0.01",
+      "areverse",
+      "silenceremove=start_periods=1:start_threshold=-48dB:start_silence=0.02",
+      "areverse",
+      "afade=t=in:d=0.01",
+    ].join(","),
+    tmp,
+  ]);
+  const gain = TARGET_LUFS - loudness(tmp);
+  ff([
+    "-i", tmp, "-af",
+    `volume=${gain.toFixed(2)}dB,alimiter=limit=${PEAK_LIMIT}:level=false:attack=2:release=40`,
+    "-c:a", "libmp3lame", "-b:a", "128k", out,
+  ]);
+  unlinkSync(tmp);
+}
+
+/** Pieces of `pcm` between the given cuts. */
+function chunks(pcm: Float32Array, cuts: Span[]): Span[] {
+  const out: Span[] = [];
+  let start = 0;
+  for (const c of cuts) {
+    out.push({ from: start, to: c.from });
+    start = c.to;
+  }
+  out.push({ from: start, to: pcm.length });
+  return out;
+}
+
+/**
+ * Step two, for a take that PASSED: find the pieces, keep what is wanted, give
+ * every sound room, and mark where each one now sits.
+ *
+ * A sound-out is cut at its pass breaks first — the longest pauses, one per
+ * pass the listener heard — and if there were three passes the first is
+ * dropped: the last two are the ones that lead into the word. Each kept pass
+ * is then cut into its sounds at its own longest pauses. Null when any of
+ * those cuts is ambiguous, because a letter must never light up on the wrong
+ * sound; the take then counts as failed.
+ */
+function finishPerformance(file: string, plan: Plan, passes: number): [number, number][] | null {
+  const pcm = decode(file);
+  const lead = new Float32Array(Math.round(LEAD_S * SR));
+  const tail = new Float32Array(Math.round(TAIL_S * SR));
+  const parts: Float32Array[] = [lead];
+  const marks: [number, number][] = [];
+  let t = lead.length;
+  const put = (piece: Float32Array, mark: boolean) => {
+    parts.push(piece);
+    if (mark) marks.push([Math.round((t / SR) * 1000), Math.round(((t + piece.length) / SR) * 1000)]);
+    t += piece.length;
+  };
+  const gap = (s: number) => put(new Float32Array(Math.round(s * SR)), false);
+
+  if (plan.kind === "soundout") {
+    // Every sound of every pass, and the word, is one piece: passes × k cuts,
+    // taken at the longest pauses all at once. (Finding the pass breaks
+    // first does not work — a pause between two sounds can be nearly as long
+    // as the one between two passes.)
+    const k = plan.pass!.length;
+    const cuts = longestPauses(pauses(pcm), passes * k);
+    if (!cuts) return null;
+    const pieces = chunks(pcm, cuts);
+    const firstKept = (passes - 2) * k; // drop any extra passes at the start
+    for (let i = firstKept; i < pieces.length; i++) {
+      put(pcm.subarray(pieces[i]!.from, pieces[i]!.to), true);
+      if (i === pieces.length - 1) break;
+      const natural = (cuts[i]!.to - cuts[i]!.from) / SR;
+      const endOfPass = (i + 1) % k === 0;
+      // never shorter than the voice made it, never shorter than asked
+      gap(Math.max(natural, endOfPass ? GAP_PASS_S : GAP_SOUND_S));
+    }
+  } else {
+    // An intro: the sound is whatever follows the last real pause.
+    const real = pauses(pcm).filter((g) => g.to - g.from >= 0.12 * SR);
+    const last = real[real.length - 1];
+    if (!last) return null;
+    const after = (pcm.length - last.to) / SR;
+    if (after < 0.12 || after > 1.8) return null;
+    put(pcm.subarray(0, last.from), false);
+    gap(Math.max((last.to - last.from) / SR, GAP_INTRO_S));
+    put(pcm.subarray(last.to), true);
+  }
+  parts.push(tail);
+  const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+  let o = 0;
+  for (const p of parts) {
+    out.set(p, o);
+    o += p.length;
+  }
+  encode(out, file);
+  return marks;
+}
+
+/* ------------------------------------------------------------------ */
 /* The run                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -641,7 +972,8 @@ interface Attempt {
   input: string;
   seed: number;
   file: string;
-  verdict?: { ok: boolean; why: string; score: number };
+  marks?: [number, number][];
+  verdict?: Verdict;
 }
 
 async function pool<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>): Promise<R[]> {
@@ -659,10 +991,23 @@ async function pool<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>): Prom
 }
 
 function attemptsFor(plan: Plan): { input: string; seed: number }[] {
-  const seeds = plan.lang === "he" ? [11, 23, 37, 51] : [11, 23, 37];
+  // Performances fail more often (a loop, a merged sound) and are worth more,
+  // so they get more seeds.
+  const seeds =
+    plan.kind !== "clip"
+      ? [11, 23, 37, 51, 67, 79, 97, 113]
+      : plan.lang === "he"
+        ? [11, 23, 37, 51]
+        : [11, 23, 37];
   const list: { input: string; seed: number }[] = [];
-  for (const input of plan.inputs) for (const seed of seeds) list.push({ input, seed });
-  return list.slice(0, 6);
+  // Clips exhaust one way of asking before trying the next; performances
+  // alternate, because their failures are random rather than systematic.
+  if (plan.kind === "clip") {
+    for (const input of plan.inputs) for (const seed of seeds) list.push({ input, seed });
+  } else {
+    for (const seed of seeds) for (const input of plan.inputs) list.push({ input, seed });
+  }
+  return list.slice(0, plan.kind !== "clip" ? 8 : 6);
 }
 
 async function main() {
@@ -692,9 +1037,11 @@ async function main() {
       const next = s.queue.shift()!;
       const raw = await synth(next.input, s.plan.lang, next.seed);
       const file = path.join(CACHE, "takes", `${s.plan.line.id}--${s.tried.length}.mp3`);
-      processClip(raw, file, s.plan);
       const a: Attempt = { ...next, file };
+      if (s.plan.kind === "clip") processClip(raw, file, s.plan);
+      else preparePerformance(raw, file);
       s.tried.push(a);
+      console.log(`  · ${s.plan.line.id} take ${s.tried.length}${a.verdict ? ` — ${a.verdict.why}` : ""}`);
       return { s, a };
     });
 
@@ -708,6 +1055,7 @@ async function main() {
 
     // The acoustic floor first: a take that fails it is not worth a listen.
     const heard = fresh.filter(({ s, a }) => {
+      if (a.verdict) return false;
       const floor = acousticFloor(s.plan, a.file);
       if (floor) a.verdict = { ok: false, why: floor, score: 0 };
       return !floor;
@@ -719,15 +1067,25 @@ async function main() {
     const batches: (typeof heard)[] = [];
     for (const kind of kinds) {
       const group = heard.filter(({ s }) => s.plan.line.group === kind);
-      for (let i = 0; i < group.length; i += 8) batches.push(group.slice(i, i + 8));
+      const size = group[0]?.s.plan.kind === "clip" ? 8 : 5;
+      for (let i = 0; i < group.length; i += size) batches.push(group.slice(i, i + size));
     }
     await pool(batches, 4, async (batch) => {
-      const verdicts = await judge(batch.map(({ a }) => a.file));
+      const verdicts = await judge(
+        batch.map(({ a }) => a.file),
+        PROMPT[batch[0]!.s.plan.kind],
+      );
       batch.forEach(({ s, a }, i) => {
         const v = verdicts[i]!;
         a.verdict = s.plan.check(v);
         if (v.judge && v.judge !== JUDGE_MODEL) a.verdict.why += ` · by ${v.judge.split("/")[1]}`;
+        if (a.verdict.ok && s.plan.kind !== "clip") {
+          const marks = finishPerformance(a.file, s.plan, a.verdict.passes ?? 2);
+          if (marks) a.marks = marks;
+          else a.verdict = { ...a.verdict, ok: false, why: `${a.verdict.why} — but its pauses do not split cleanly into those sounds` };
+        }
         if (a.verdict.ok) s.done = true;
+        console.log(`  ${a.verdict.ok ? "✓" : "✗"} ${s.plan.line.id}: ${a.verdict.why}`);
       });
     });
     const passed = fresh.filter(({ a }) => a.verdict?.ok).length;
@@ -737,33 +1095,49 @@ async function main() {
   // Keep the passing take, or the best one when nothing passed.
   const now = Date.now();
   const rows = new Map<string, string>();
+  const marks = new Map<string, [number, number][]>();
   for (const { plan, tried } of state.values()) {
+    const passed = tried.find((t) => t.verdict?.ok);
     const best =
-      tried.find((t) => t.verdict?.ok) ??
-      [...tried].sort((a, b) => (b.verdict?.score ?? 0) - (a.verdict?.score ?? 0))[0];
+      passed ?? [...tried].sort((a, b) => (b.verdict?.score ?? 0) - (a.verdict?.score ?? 0))[0];
     if (!best) continue;
-    writeFileSync(path.join(OUT_DIR, `${plan.line.id}.mp3`), readFileSync(best.file));
     const cell = (x: string) => x.replace(/\|/g, "\\|").replace(/\n/g, " ");
+    const dest = path.join(OUT_DIR, `${plan.line.id}.mp3`);
+    if (plan.kind !== "clip" && !passed) {
+      // A sound-out with the wrong sounds, or an intro that ends on a Hebrew
+      // ר, is worse than none: the app plays the separate clips instead.
+      if (existsSync(dest)) unlinkSync(dest);
+      rows.set(
+        plan.line.id,
+        `| ⚠️ | \`${plan.line.id}\` | ${tried.length} | not kept — the app uses the separate clips | ${cell(best.verdict?.why ?? "")} |`,
+      );
+      continue;
+    }
+    writeFileSync(dest, readFileSync(best.file));
+    if (best.marks) marks.set(plan.line.id, best.marks);
     rows.set(
       plan.line.id,
       `| ${best.verdict?.ok ? "✅" : "⚠️"} | \`${plan.line.id}\` | ${tried.length} | \`${cell(best.input)}\` | ${cell(best.verdict?.why ?? "")} |`,
     );
   }
 
-  writeIndex(now);
+  writeIndex(now, marks);
   const failed = writeReport(rows);
   if (flag("--preview")) renderPreviews();
   console.log(`kept ${rows.size} clips · ${failed} need a human ear (see docs/voice-qa.md)`);
 }
 
 /** index.json lists every clip in public/voice, so it is right however the run was scoped. */
-function writeIndex(now: number) {
+function writeIndex(now: number, marks: Map<string, [number, number][]>) {
   const known = new Set(VOICE_LINES.map((l) => l.id));
   const indexPath = path.join(OUT_DIR, "index.json");
   const prev = existsSync(indexPath)
-    ? (JSON.parse(readFileSync(indexPath, "utf8")) as { clips: { id: string; updatedAt: number }[] })
+    ? (JSON.parse(readFileSync(indexPath, "utf8")) as {
+        clips: { id: string; updatedAt: number; marks?: [number, number][] }[];
+      })
     : { clips: [] };
   const prevAt = new Map(prev.clips.map((c) => [c.id, c.updatedAt]));
+  const prevMarks = new Map(prev.clips.map((c) => [c.id, c.marks]));
   const clips = readdirSync(OUT_DIR)
     .filter((f) => f.endsWith(".mp3"))
     .map((f) => f.slice(0, -4))
@@ -778,6 +1152,10 @@ function writeIndex(now: number) {
         updatedAt: fresh ? now : (prevAt.get(id) ?? now),
         size: statSync(file).size,
         durationMs: Math.round(probeDuration(file) * 1000),
+        ...(() => {
+          const m = marks.get(id) ?? (fresh ? undefined : prevMarks.get(id));
+          return m ? { marks: m } : {};
+        })(),
       };
     });
   writeFileSync(indexPath, JSON.stringify({ generatedAt: now, clips }, null, 2) + "\n");
@@ -823,31 +1201,13 @@ function writeReport(fresh: Map<string, string>): number {
   return failed;
 }
 
-/**
- * Two files that sound exactly like the app will: the S letter intro (the
- * Hebrew sentence, then /s/) and the SUN word intro (sounded out twice, then
- * the word). For a human to approve before anything else is trusted.
- */
+/** Copies of the performance lines, where a human can find them. */
 function renderPreviews() {
   const dir = path.join(CACHE, "preview");
   mkdirSync(dir, { recursive: true });
-  const clip = (id: string) => path.join(OUT_DIR, `${id}.mp3`);
-  const silence = (s: number) => {
-    const f = path.join(dir, `sil-${s}.wav`);
-    if (!existsSync(f)) ff(["-f", "lavfi", "-i", `anullsrc=r=44100:cl=mono`, "-t", String(s), f]);
-    return f;
-  };
-  const join = (name: string, parts: string[]) => {
-    const list = path.join(dir, `${name}.txt`);
-    writeFileSync(list, parts.map((p) => `file '${p}'`).join("\n"));
-    ff(["-f", "concat", "-safe", "0", "-i", list, "-ac", "1", "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "96k", path.join(dir, `${name}.mp3`)]);
-  };
-  join("letter-intro-S", [clip("narration-intro-S"), silence(0.15), clip("phoneme-s")]);
-  // The same timing the word intro uses: a slow pass, a quicker one, the word.
-  const sun = segmentsFor("SUN").map((seg) => clip(`phoneme-${seg.ph}`));
-  const slow = sun.flatMap((c, i) => (i < sun.length - 1 ? [c, silence(0.22)] : [c]));
-  const quick = sun.flatMap((c, i) => (i < sun.length - 1 ? [c, silence(0.09)] : [c]));
-  join("word-intro-SUN", [...slow, silence(0.55), ...quick, silence(0.55), clip("word-SUN")]);
+  for (const f of readdirSync(OUT_DIR).filter((x) => /^(soundout-|narration-intro-).*\.mp3$/.test(x))) {
+    writeFileSync(path.join(dir, f), readFileSync(path.join(OUT_DIR, f)));
+  }
   console.log(`previews in ${dir}`);
 }
 

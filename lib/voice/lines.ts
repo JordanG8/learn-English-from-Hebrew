@@ -25,7 +25,14 @@
  */
 
 import { LETTERS, letterIntroText } from "@/lib/curriculum/alphabet";
-import { LETTER_PHONEME, PHONEMES, PHONEME_IDS, type PhonemeId } from "@/lib/phonics";
+import {
+  LETTER_PHONEME,
+  PHONEMES,
+  PHONEME_IDS,
+  letterPhoneme,
+  segmentsFor,
+  type PhonemeId,
+} from "@/lib/phonics";
 import { WORDS } from "@/lib/curriculum/words";
 import { SENTENCES } from "@/lib/curriculum/sentences";
 import { LESSONS, TUTORIAL_LESSON } from "@/lib/curriculum/lessons";
@@ -36,6 +43,7 @@ export type VoiceGroupId =
   | "letter-intro"
   | "letter-name"
   | "phoneme"
+  | "soundout"
   | "word"
   | "sentence"
   | "lesson-card";
@@ -87,9 +95,20 @@ export const phonemeLineId = (ph: PhonemeId): string => `phoneme-${ph}`;
 export const letterSoundLineId = (letter: string): string =>
   phonemeLineId(LETTER_PHONEME[letter.toUpperCase()] ?? "a");
 
-/** The short Hebrew introduction a letter lesson opens with. */
+/** The short Hebrew introduction a letter lesson opens with — sound included. */
 export const letterIntroLineId = (letter: string): string =>
   `narration-intro-${letter.toUpperCase()}`;
+
+/**
+ * A word sounded out in ONE breath of one voice — "sss · uh · nnn, sss · uh ·
+ * nnn, sun!" — rather than stitched from separate clips. Stitched, every
+ * sound arrived with its own flat, finished intonation and the whole thing
+ * sounded like a machine reading a list; performed, it rises and falls the way
+ * a teacher's voice does. The clip carries time marks for each sound (see
+ * VoiceClip.marks) so the letters still light up in step with it.
+ */
+export const soundoutLineId = (word: string): string =>
+  `soundout-${word.toUpperCase().replace(/[^A-Z]/g, "")}`;
 
 
 export const wordLineId = (word: string): string =>
@@ -198,11 +217,34 @@ function letterIntroLines(): VoiceLine[] {
     id: letterIntroLineId(d.letter),
     group: "letter-intro" as const,
     lang: "he" as const,
-    text: letterIntroText(d.nameHe),
-    directionHe: "פתיחת שיעור האות - בעברית, חם, ולהשאיר את הסוף פתוח: הצליל עצמו מתנגן מיד אחרי.",
+    text: `${letterIntroText(d.nameHe)} /${PHONEMES[letterPhoneme(d.letter) ?? "a"].ipa}/`,
+    directionHe:
+      "פתיחת שיעור האות — בעברית, חם ומזמין, ובסוף הצליל עצמו באנגלית, אחרי הפסקה קטנה.",
     fallback: null,
     order: i,
   }));
+}
+
+function soundoutLines(): VoiceLine[] {
+  // Every word a child BUILDS is introduced by its sound-out first.
+  const words = [...new Set(WORDS.map((w) => w.word.toUpperCase()))].sort();
+  return words.map((word, i) => {
+    const pass = segmentsFor(word)
+      .filter((seg) => seg.ph)
+      .map((seg) => seg.letters.toLowerCase())
+      .join(" · ");
+    return {
+      id: soundoutLineId(word),
+      group: "soundout" as const,
+      lang: "en" as const,
+      text: `${pass} … ${pass} … ${word.toLowerCase()}!`,
+      directionHe: `לפרק את ${word} לצלילים — לאט, בחום, כמו מורה: פעמיים, ואז המילה כולה.`,
+      // No synthesiser can perform this; without a recording the app plays
+      // the separate sound clips in order instead.
+      fallback: null,
+      order: i,
+    };
+  });
 }
 
 function wordLines(): VoiceLine[] {
@@ -274,6 +316,12 @@ export const VOICE_GROUPS: readonly VoiceGroup[] = [
     blurbHe:
       "סְ, אַ, טְ… — הצליל של כל אות, וגם צלילים של צירופים (sh, ee, oo). מהם בנויה כל מילה כשמפרקים אותה.",
     lines: phonemeLines(),
+  },
+  {
+    id: "soundout",
+    titleHe: "מפרקים מילה",
+    blurbHe: "«ססס · אָ · ננן… שמש!» — כל מילה חדשה, מפורקת לצלילים בנשימה אחת.",
+    lines: soundoutLines(),
   },
   {
     id: "word",

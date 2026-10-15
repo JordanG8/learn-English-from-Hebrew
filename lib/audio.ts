@@ -22,14 +22,17 @@ import {
   letterNameLineId,
   letterSoundLineId,
   narrationLineId,
+  phonemeLineId,
   sentenceLineId,
   wordLineId,
 } from "@/lib/voice/lines";
 import {
   loadVoiceManifest,
   voiceManifestReady,
+  voiceManifestSnapshot,
   voiceUrl,
 } from "@/lib/voice/manifest";
+import { PHONEMES, type PhonemeId } from "@/lib/phonics";
 import { getLetter } from "@/lib/curriculum/alphabet";
 
 let ctx: AudioContext | null = null;
@@ -119,20 +122,17 @@ function tone(freq: number, startAt: number, durS: number, gain = 0.14): void {
  * to be audible in the first fifty milliseconds or the reward reads as the
  * same event as a tap.
  *
- * So the level-up is built the way an actual sound designer builds one, out of
- * four layers that do four different jobs, and still with no asset files:
+ * So the level-up is layered, still with no asset files:
  *
  *   · a WHOOSH — filtered noise sweeping up — under the jump, so the flight
  *     has a sound and not just the landing;
- *   · a THUMP — a sine dropped fast through its own pitch — which is the part
- *     you feel rather than hear, and the reason the landing has weight;
- *   · an IMPACT — a bright, very short noise crack — which is the part that
- *     makes the thump read as hitting something;
- *   · a FANFARE — a major arpeggio on bell voices over a held fifth — which is
- *     the part a child will hum.
+ *   · an IMPACT — a bright, very short noise crack — for the landing;
+ *   · a FANFARE — a major arpeggio on bell voices — which is the part a child
+ *     will hum.
  *
- * They are stacked with real envelopes (fast attack, exponential decay) and a
- * shared soft-clip on the way out, so four layers at once cannot crackle.
+ * It used to have a fourth layer, a low "thump" and a held bass pad under the
+ * chord. On a phone that read as a bass hit every time a child got something
+ * right, so it is gone; the reward is bright, not heavy.
  */
 
 let noiseBuf: AudioBuffer | null = null;
@@ -179,28 +179,6 @@ function whoosh(
   }
 }
 
-/** The weight of a landing: a sine dropped fast through its own pitch. */
-function thump(startAt: number, gain = 0.5): void {
-  const ac = audioContext();
-  if (!ac) return;
-  try {
-    const t0 = ac.currentTime + startAt;
-    const osc = ac.createOscillator();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(190, t0);
-    osc.frequency.exponentialRampToValueAtTime(46, t0 + 0.17);
-    const g = ac.createGain();
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.42);
-    osc.connect(g).connect(output(ac));
-    osc.start(t0);
-    osc.stop(t0 + 0.46);
-  } catch {
-    /* fail silent */
-  }
-}
-
 /**
  * A bell: a triangle fundamental plus two quiet, slightly sharp partials.
  * Three cheap oscillators are the least it takes to stop sounding like a test
@@ -231,31 +209,6 @@ function bell(freq: number, startAt: number, durS: number, gain = 0.16): void {
       o.stop(t0 + durS + 0.05);
     }
     g.connect(output(ac));
-  } catch {
-    /* fail silent */
-  }
-}
-
-/** A held, quiet pad under the arpeggio, so the fanfare has a floor. */
-function swell(freq: number, startAt: number, durS: number, gain = 0.07): void {
-  const ac = audioContext();
-  if (!ac) return;
-  try {
-    const t0 = ac.currentTime + startAt;
-    const o = ac.createOscillator();
-    o.type = "sawtooth";
-    o.frequency.value = freq;
-    const f = ac.createBiquadFilter();
-    f.type = "lowpass";
-    f.frequency.setValueAtTime(500, t0);
-    f.frequency.linearRampToValueAtTime(1900, t0 + durS * 0.5);
-    const g = ac.createGain();
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.09);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + durS);
-    o.connect(f).connect(g).connect(output(ac));
-    o.start(t0);
-    o.stop(t0 + durS + 0.05);
   } catch {
     /* fail silent */
   }
@@ -301,17 +254,16 @@ export function playSfx(name: Sfx): void {
       tone(587, 0.07, 0.12, 0.06);
       break;
     case "level-up": {
-      // Weight first…
-      thump(0, 0.55);
+      // A bright crack for the landing, then the tune: C major, up and over
+      // the octave. There is deliberately NO low end any more — the thump
+      // (190→46 Hz) and the held pad under the chord read on a phone as a
+      // bass hit on every right answer, which is not what a reward should
+      // feel like. The bells carry it on their own.
       whoosh(0, 0.14, 5200, 900, 0.16, "highpass");
-      // …then the tune. C major, up and over the octave, with the fifth held
-      // underneath so the last note lands on a chord and not on a beep.
       const ARP = [523.25, 659.25, 783.99, 1046.5];
       ARP.forEach((f, i) => bell(f, 0.06 + i * 0.075, 0.55 + i * 0.12, 0.17));
       bell(1567.98, 0.36, 1.5, 0.1);
       bell(2093, 0.42, 1.3, 0.055);
-      swell(261.63, 0.05, 1.25, 0.06);
-      swell(392, 0.05, 1.25, 0.045);
       break;
     }
   }
@@ -359,14 +311,67 @@ export function speakEn(text: string, rate = 0.75): void {
 }
 
 /* ------------------------------------------------------------------ */
-/* Recorded human voice — preferred over TTS wherever a clip exists     */
+/* Recorded voice — preferred over TTS wherever a clip exists           */
 /* ------------------------------------------------------------------ */
 
-/**
- * One element for all speech, so a new line cuts the previous one off the
- * same way `speechSynthesis.cancel()` does. Created lazily and only in the
- * browser.
+/*
+ * HOW SPEECH PLAYS.
+ *
+ * Through WebAudio, from decoded buffers, whenever it can. Two things in this
+ * app need that rather than an <audio> element:
+ *
+ *  · Every keypress plays the letter's sound. An element re-pointed at a new
+ *    file takes a noticeable moment to start on a phone; a decoded buffer
+ *    starts the instant it is asked to, so the sound lands WITH the key.
+ *  · A sound-out lights each letter while its sound plays. That needs to know
+ *    exactly when playback began, which a buffer source tells us and an
+ *    element only approximates.
+ *
+ * The <audio> element is kept as the fallback for a browser that cannot
+ * decode, and the synthesiser stays the fallback for a line nobody has
+ * recorded. One voice at a time throughout: anything new cuts off what was
+ * playing, and stopSpeech() silences all of it.
  */
+
+/** Decoded clips, by URL. A failed decode is remembered as null. */
+const buffers = new Map<string, Promise<AudioBuffer | null>>();
+
+function loadBuffer(url: string): Promise<AudioBuffer | null> {
+  const known = buffers.get(url);
+  if (known) return known;
+  const ac = audioContext();
+  const p = (async () => {
+    if (!ac) return null;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const data = await res.arrayBuffer();
+      return await new Promise<AudioBuffer | null>((resolve) => {
+        // The callback form, because older Safari has no promise form.
+        ac.decodeAudioData(data, resolve, () => resolve(null));
+      });
+    } catch {
+      return null;
+    }
+  })();
+  buffers.set(url, p);
+  return p;
+}
+
+let speechBus: GainNode | null = null;
+function speechOut(ac: AudioContext): AudioNode {
+  if (speechBus && speechBus.context === ac) return speechBus;
+  try {
+    speechBus = ac.createGain();
+    speechBus.gain.value = 1;
+    speechBus.connect(ac.destination);
+    return speechBus;
+  } catch {
+    return ac.destination;
+  }
+}
+
+/** One element for the fallback path, created lazily and only in the browser. */
 let clipEl: HTMLAudioElement | null = null;
 
 function clipElement(): HTMLAudioElement | null {
@@ -383,42 +388,23 @@ function clipElement(): HTMLAudioElement | null {
 }
 
 /**
- * Play the human recording for `lineId`; fall back to TTS when there is none.
- *
- * Ordering matters: a half-recorded catalogue is the normal state while the
- * recording is in progress, so "no clip" is not an error and must not be
- * louder or slower than the recorded path.
- */
-/**
  * WHOSE TURN IT IS TO SPEAK.
  *
- * Every request to speak takes a ticket. Two things check it:
- *
- *  · The manifest race below, which resumes on a promise — by the time it
- *    resolves the child may be two steps further on, and playing the line
- *    they have left is worse than staying quiet.
- *  · stopSpeech(), which screens call when they move on, so a clip cannot
- *    outlive the card that asked for it. A three-word letter name usually
- *    finished on its own; a sentence of narration did not, and carried on
- *    talking over the next screen. That is the bug this counter exists for.
+ * Every request to speak takes a ticket, and stopSpeech() takes one too. A
+ * clip or a sequence that finds the ticket has moved on stops itself, so
+ * audio never outlives the screen that asked for it — and a manifest or a
+ * buffer that arrives late cannot start a line the child has already left.
  */
 let speechTicket = 0;
 
-/**
- * Silence everything immediately: the recorded clip, the synthesiser, and any
- * playback still waiting on the manifest. Screens call this when the step
- * changes, so audio never belongs to a screen the child has left.
- */
-export function stopSpeech(): void {
-  speechTicket += 1;
+/** What is sounding right now, so the next thing can cut it off. */
+let stopCurrent: (() => void) | null = null;
+
+function silenceCurrent(): void {
+  const stop = stopCurrent;
+  stopCurrent = null;
   try {
-    if (clipEl) {
-      clipEl.pause();
-      // Dropping the source stops a download that is still in flight; without
-      // it a slow clip can start playing after the pause.
-      clipEl.removeAttribute("src");
-      clipEl.load();
-    }
+    stop?.();
   } catch {
     /* fail silent */
   }
@@ -431,66 +417,262 @@ export function stopSpeech(): void {
   }
 }
 
-export function playLine(
-  lineId: string,
-  fallback?: { text: string; rate?: number } | null,
-): void {
-  if (muted) return;
-  const speakFallback = () => {
-    if (fallback) speakEn(fallback.text, fallback.rate ?? 0.75);
-  };
+/**
+ * Silence everything immediately: the recorded clip, the synthesiser, any
+ * sequence in progress, and any playback still waiting on a download.
+ */
+export function stopSpeech(): void {
+  speechTicket += 1;
+  silenceCurrent();
+}
 
-  const ticket = ++speechTicket;
+type PlayOutcome = "ended" | "stopped" | "failed";
 
-  // THE RACE THAT MATTERS: the walkthrough asks to speak the moment it
-  // mounts, which can be before the manifest fetch has resolved. Answering
-  // "not recorded" then would give the first line the child ever hears the
-  // robot voice — the exact thing this feature exists to remove. So when the
-  // list is not in yet, wait for it rather than guessing — but only if this
-  // is still the line being asked for when the list arrives.
-  if (!voiceManifestReady()) {
-    void loadVoiceManifest().then(() => {
-      if (ticket !== speechTicket) return;
-      playLine(lineId, fallback);
-    });
-    return;
-  }
-
-  const url = voiceUrl(lineId);
-  if (!url) {
-    speakFallback();
-    return;
-  }
-
-  const el = clipElement();
-  if (!el) {
-    speakFallback();
-    return;
-  }
-  try {
-    // A recorded line supersedes anything still being spoken.
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-    }
-    el.pause();
-    el.src = url;
-    el.currentTime = 0;
-    // A 404 (clip deleted between manifest load and playback) or a codec the
-    // device cannot decode both land here — TTS covers the gap.
-    el.onerror = () => {
-      if (ticket === speechTicket) speakFallback();
-    };
-    const p = el.play();
-    if (p && typeof p.catch === "function") {
-      p.catch(() => {
-        // An autoplay refusal or a source dropped by stopSpeech both land
-        // here; only the first deserves the fallback voice.
-        if (ticket === speechTicket) speakFallback();
+/**
+ * Play one recorded clip and resolve when it is over. `onStart` fires the
+ * moment sound actually begins — after any download — with the time in
+ * performance.now() terms, which is what a highlight follows.
+ */
+async function playUrl(
+  url: string,
+  ticket: number,
+  onStart?: (at: number) => void,
+): Promise<PlayOutcome> {
+  const ac = audioContext();
+  if (ac) {
+    const buf = await loadBuffer(url);
+    if (ticket !== speechTicket) return "stopped";
+    if (buf) {
+      return new Promise<PlayOutcome>((resolve) => {
+        let settled = false;
+        const settle = (o: PlayOutcome) => {
+          if (settled) return;
+          settled = true;
+          resolve(o);
+        };
+        try {
+          silenceCurrent();
+          const src = ac.createBufferSource();
+          src.buffer = buf;
+          src.connect(speechOut(ac));
+          src.onended = () => {
+            if (stopCurrent === stop) stopCurrent = null;
+            settle("ended");
+          };
+          const stop = () => {
+            try {
+              src.onended = null;
+              src.stop();
+            } catch {
+              /* already stopped */
+            }
+            settle("stopped");
+          };
+          stopCurrent = stop;
+          src.start();
+          onStart?.(performance.now());
+        } catch {
+          settle("failed");
+        }
       });
     }
-  } catch {
-    speakFallback();
   }
+
+  // Fallback: the <audio> element.
+  const el = clipElement();
+  if (!el) return "failed";
+  return new Promise<PlayOutcome>((resolve) => {
+    let settled = false;
+    const settle = (o: PlayOutcome) => {
+      if (settled) return;
+      settled = true;
+      el.onended = null;
+      el.onerror = null;
+      el.onplaying = null;
+      resolve(o);
+    };
+    try {
+      silenceCurrent();
+      el.pause();
+      el.src = url;
+      el.currentTime = 0;
+      el.onplaying = () => onStart?.(performance.now());
+      el.onended = () => settle("ended");
+      el.onerror = () => settle("failed");
+      stopCurrent = () => {
+        try {
+          el.pause();
+          el.removeAttribute("src");
+          el.load();
+        } catch {
+          /* fail silent */
+        }
+        settle("stopped");
+      };
+      const p = el.play();
+      if (p && typeof p.catch === "function") p.catch(() => settle("failed"));
+    } catch {
+      settle("failed");
+    }
+  });
+}
+
+/** Speak an English string and resolve when the synthesiser is done. */
+function speakEnAndWait(text: string, rate: number, ticket: number): Promise<PlayOutcome> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window) || !enVoice()) {
+      resolve("failed");
+      return;
+    }
+    try {
+      const v = enVoice()!;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.voice = v;
+      u.lang = v.lang;
+      u.rate = rate;
+      u.pitch = 1.05;
+      // Some engines never fire onend; never let a sequence hang on one.
+      const guard = window.setTimeout(() => resolve("ended"), 1200 + text.length * 160);
+      u.onend = () => {
+        window.clearTimeout(guard);
+        resolve(ticket === speechTicket ? "ended" : "stopped");
+      };
+      u.onerror = () => {
+        window.clearTimeout(guard);
+        resolve("failed");
+      };
+      window.speechSynthesis.speak(u);
+    } catch {
+      resolve("failed");
+    }
+  });
+}
+
+type Fallback = { text: string; rate?: number } | null | undefined;
+
+/** The recorded clip if there is one, else the synthesiser, else nothing. */
+async function speakOne(
+  lineId: string,
+  fallback: Fallback,
+  ticket: number,
+  onStart?: (at: number) => void,
+): Promise<PlayOutcome> {
+  // THE RACE THAT MATTERS: a screen can ask to speak before the list of
+  // recorded lines has arrived. Answering "not recorded" then would give the
+  // child the robot voice for a line that has a human one, so wait for it.
+  if (!voiceManifestReady()) await loadVoiceManifest();
+  if (ticket !== speechTicket) return "stopped";
+  const url = voiceUrl(lineId);
+  if (url) {
+    const o = await playUrl(url, ticket, onStart);
+    if (o !== "failed") return o;
+  }
+  if (ticket !== speechTicket) return "stopped";
+  if (!fallback || muted) return "failed";
+  onStart?.(performance.now());
+  return speakEnAndWait(fallback.text, fallback.rate ?? 0.75, ticket);
+}
+
+/** Fire and forget: say this line now, cutting off whatever was speaking. */
+export function playLine(lineId: string, fallback?: Fallback): void {
+  if (muted) return;
+  const ticket = ++speechTicket;
+  silenceCurrent();
+  void speakOne(lineId, fallback, ticket);
+}
+
+/** Say this line and resolve true when it has been heard to the end. */
+export async function speakLine(
+  lineId: string,
+  opts: { fallback?: Fallback; onStart?: (at: number) => void } = {},
+): Promise<boolean> {
+  if (muted) return false;
+  const ticket = ++speechTicket;
+  silenceCurrent();
+  return (await speakOne(lineId, opts.fallback, ticket, opts.onStart)) === "ended";
+}
+
+export interface SequenceStep {
+  lineId: string;
+  fallback?: Fallback;
+  /** Silence before this step, in ms. */
+  pauseMs?: number;
+  /** Fires when this step's sound actually starts. */
+  onStart?: () => void;
+  /** Fires when this step's sound has finished. */
+  onEnd?: () => void;
+}
+
+/**
+ * Several lines, one after the other, as ONE thing to say: a single ticket,
+ * so stopSpeech() (or anything else starting to speak) ends the whole run.
+ * Resolves true only if every step was heard.
+ */
+export async function playSequence(steps: readonly SequenceStep[]): Promise<boolean> {
+  if (muted) return false;
+  // No silencing up front: a sequence that opens with a pause lets whatever
+  // is sounding (the last letter typed) finish first. Each clip cuts off the
+  // one before it as it starts, and stopSpeech() still ends the whole run.
+  const ticket = ++speechTicket;
+  for (const step of steps) {
+    if (step.pauseMs) await new Promise((r) => setTimeout(r, step.pauseMs));
+    if (ticket !== speechTicket) return false;
+    const o = await speakOne(step.lineId, step.fallback, ticket, () => step.onStart?.());
+    step.onEnd?.();
+    if (o === "stopped" || ticket !== speechTicket) return false;
+  }
+  return true;
+}
+
+/** The time marks a generated clip carries, if this line is recorded with them. */
+export function lineMarks(lineId: string): readonly [number, number][] | null {
+  return voiceManifestSnapshot()[lineId]?.marks ?? null;
+}
+
+/** True when a human/generated recording exists for this line. */
+export function isRecorded(lineId: string): boolean {
+  return voiceUrl(lineId) !== null;
+}
+
+/**
+ * Play a clip that carries time marks, and say which mark is sounding:
+ * `onMark(i)` as piece i starts, `onMark(-1)` in each gap and at the end.
+ * Resolves true when heard to the end. Without marks it simply plays.
+ */
+export async function followLine(
+  lineId: string,
+  onMark: (index: number) => void,
+): Promise<boolean> {
+  if (muted) return false;
+  const ticket = ++speechTicket;
+  silenceCurrent();
+  if (!voiceManifestReady()) await loadVoiceManifest();
+  const marks = lineMarks(lineId) ?? [];
+  const timers: number[] = [];
+  const o = await speakOne(lineId, null, ticket, (at) => {
+    const lag = performance.now() - at;
+    marks.forEach(([start, end], i) => {
+      timers.push(window.setTimeout(() => ticket === speechTicket && onMark(i), Math.max(0, start - lag)));
+      timers.push(window.setTimeout(() => ticket === speechTicket && onMark(-1), Math.max(0, end - lag)));
+    });
+  });
+  if (o !== "ended") timers.forEach((t) => window.clearTimeout(t));
+  return o === "ended";
+}
+
+/**
+ * Fetch and decode clips before they are needed, so the first keypress of a
+ * lesson sounds as fast as the hundredth. Idempotent, fail-silent.
+ */
+export function preloadLines(ids: readonly string[]): void {
+  if (typeof window === "undefined") return;
+  void loadVoiceManifest().then(() => {
+    for (const id of ids) {
+      const url = voiceUrl(id);
+      if (url) void loadBuffer(url);
+    }
+  });
 }
 
 /** The letter's NAME ("bee"), recorded if possible. */
@@ -502,7 +684,7 @@ export function sayLetterName(letter: string, rate = 0.7): void {
   });
 }
 
-/** The letter's SOUND ("buh"), recorded if possible. */
+/** The letter's SOUND — the phoneme it teaches ("sss" for S). */
 export function sayLetterSound(letter: string, rate = 0.6): void {
   const d = getLetter(letter);
   playLine(letterSoundLineId(letter), {
@@ -511,79 +693,73 @@ export function sayLetterSound(letter: string, rate = 0.6): void {
   });
 }
 
+/** One sound — what a keypress plays inside a word. */
+export function sayPhoneme(ph: PhonemeId): void {
+  playLine(phonemeLineId(ph), { text: PHONEMES[ph].as, rate: 0.6 });
+}
+
 /** An English word, recorded if possible. */
 export function sayWord(word: string, rate = 0.7): void {
   playLine(wordLineId(word), { text: word.toLowerCase(), rate });
 }
 
-/**
- * A whole English sentence.
- *
- * Nothing in the sentence phase is recorded yet, so today this is the browser
- * voice every time — slower than a word, because a synthesiser running a
- * sentence at conversational speed is the least intelligible thing it does.
- * The moment somebody records the line in /studio the same call plays a human
- * instead, with no change here. See lib/voice/lines.ts → sentenceLines.
- */
+/** A whole English sentence. */
 export function saySentence(sentence: string, rate = 0.65): void {
   playLine(sentenceLineId(sentence), { text: sentence.toLowerCase(), rate });
+}
+
+/** A say-key as something speakable, or null for an sfx or an unknown key. */
+function lineForKey(key: string): { lineId: string; fallback: Fallback } | null {
+  const i = key.indexOf(":");
+  if (i <= 0) return null;
+  const kind = key.slice(0, i);
+  const value = key.slice(i + 1);
+  switch (kind) {
+    case "letter-name":
+      return { lineId: letterNameLineId(value), fallback: { text: getLetter(value)?.nameEn ?? value, rate: 0.7 } };
+    case "letter-sound":
+      return /^[A-Za-z]$/.test(value)
+        ? { lineId: letterSoundLineId(value), fallback: { text: getLetter(value)?.soundSpeak ?? value, rate: 0.6 } }
+        : null;
+    case "word":
+      return { lineId: wordLineId(value), fallback: { text: value.toLowerCase(), rate: 0.7 } };
+    case "sentence":
+      return { lineId: sentenceLineId(value), fallback: { text: value.toLowerCase(), rate: 0.65 } };
+    default:
+      return null;
+  }
 }
 
 /**
  * EVERYTHING A TUTORIAL CARD SHOULD SAY, in the right order.
  *
- * A card has two possible sounds: the recorded Hebrew narration, and the cue
- * the content itself asks for (`step.say`). Firing both — which is what the
- * walkthrough used to do — means the second one replaces the first mid-word,
- * because recorded speech is a single audio element by design. So:
- *
- *  · An `sfx:` cue is a synthesised tone on a different channel; it plays
- *    alongside the narration and always has.
- *  · A spoken cue (a letter, a word) is a SUBSTITUTE for narration, not a
- *    companion: it plays only when this card has no recording of its own.
+ * A card can have a recorded Hebrew narration and a cue of its own
+ * (`step.say`). An `sfx:` cue plays alongside, on its own channel. A spoken
+ * cue waits for the narration to finish — firing both at once used to cut the
+ * narration off a word in — and plays on its own when the card has no
+ * narration recorded.
  */
 export function sayCard(stepId: string, sayKey?: string): void {
   if (muted) return;
-  const isSfx = sayKey?.startsWith("sfx:") ?? false;
-  if (sayKey && isSfx) playSfx(sayKey.slice(4) as Sfx);
-  const cue = sayKey && !isSfx ? sayKey : null;
-
-  if (!voiceManifestReady()) {
-    const ticket = speechTicket;
-    void loadVoiceManifest().then(() => {
-      if (ticket !== speechTicket) return;
-      sayCard(stepId, sayKey);
-    });
-    return;
-  }
-
-  if (!voiceUrl(narrationLineId(stepId))) {
-    if (cue) say(cue);
-    return;
-  }
-
-  sayNarration(stepId);
-  if (!cue) return;
-
-  // The cue is not decoration on these cards: every letter-intro card reads
-  // "this letter makes the sound X" and then makes it. So it waits its turn
-  // rather than being dropped or talked over — and it is abandoned if the
-  // child moves on first, which the ticket taken by the narration detects.
-  const ticket = speechTicket;
-  const el = clipElement();
-  if (!el) return;
-  const onEnded = () => {
-    el.removeEventListener("ended", onEnded);
-    if (ticket === speechTicket) say(cue);
-  };
-  el.addEventListener("ended", onEnded);
+  if (sayKey?.startsWith("sfx:")) playSfx(sayKey.slice(4) as Sfx);
+  const cue = sayKey && !sayKey.startsWith("sfx:") ? lineForKey(sayKey) : null;
+  const ticket = ++speechTicket;
+  silenceCurrent();
+  void (async () => {
+    if (!voiceManifestReady()) await loadVoiceManifest();
+    if (ticket !== speechTicket) return;
+    const narration = narrationLineId(stepId);
+    if (voiceUrl(narration)) {
+      const o = await speakOne(narration, null, ticket);
+      if (o !== "ended" || !cue) return;
+    }
+    if (cue) await speakOne(cue.lineId, cue.fallback, ticket);
+  })();
 }
 
 /**
- * A Hebrew narration line (the walkthrough, and every tutorial card).
- *
- * No fallback on purpose — see lib/voice/lines.ts. If it is not recorded, the
- * card is read, not heard, exactly as it was before recordings existed.
+ * A Hebrew narration line. No fallback on purpose: a robotic Hebrew voice is
+ * worse than the text that is always on screen.
  */
 export function sayNarration(stepId: string): void {
   playLine(narrationLineId(stepId), null);
@@ -642,6 +818,14 @@ export function say(key: string | undefined): void {
 /** Call once from a click handler to satisfy mobile autoplay policies. */
 export function primeAudio(): void {
   audioContext();
+  try {
+    // iOS mutes WebAudio when the ring switch is off unless the page asks to
+    // be treated as media playback — and a lesson's voice is exactly that.
+    const nav = navigator as Navigator & { audioSession?: { type: string } };
+    if (nav.audioSession) nav.audioSession.type = "playback";
+  } catch {
+    /* older browsers: nothing to do */
+  }
   // Warm the list of recorded lines. Idempotent, fail-silent, and needed
   // before the first playLine so a recorded clip is not missed by a race.
   void loadVoiceManifest();

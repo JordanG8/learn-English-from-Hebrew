@@ -35,7 +35,15 @@ import { planMixedReview } from "@/lib/srs";
 import { buildReviewLesson, buildWarmupSteps, skillsForStep } from "@/lib/curriculum";
 import { starsFor, completionHeadlineHe } from "@/lib/reward";
 import type { Stars } from "@/lib/reward";
-import { playSfx } from "@/lib/audio";
+import { playSfx, preloadLines } from "@/lib/audio";
+import { ALL_MOUTHS, PHONEME_IDS, mouthSrc } from "@/lib/phonics";
+import {
+  letterIntroLineId,
+  phonemeLineId,
+  sentenceLineId,
+  soundoutLineId,
+  wordLineId,
+} from "@/lib/voice/lines";
 import {
   BigButton,
   Confetti,
@@ -47,10 +55,12 @@ import {
 import {
   BuildSentenceView,
   BuildWordView,
+  LetterIntroView,
   LetterShapeView,
   LetterSoundView,
   PressKeyView,
   TutorialCardView,
+  WordIntroView,
   type StepRenderProps,
 } from "./steps";
 
@@ -95,6 +105,32 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
 
   const lesson = resolved;
   const steps: Step[] = useMemo(() => lesson?.steps ?? [], [lesson]);
+
+  /*
+   * WARM THE VOICE before it is needed. Every keypress plays a sound, and the
+   * first one of a lesson should land as fast as the hundredth — so every
+   * sound clip (they are tiny), and every line this lesson will say, is
+   * fetched and decoded the moment it opens. The twelve mouths too, so a
+   * mouth swapped mid-word is already in memory.
+   */
+  useEffect(() => {
+    if (!lesson) return;
+    const ids = new Set<string>(PHONEME_IDS.map(phonemeLineId));
+    for (const s of lesson.steps) {
+      if (s.type === "letter-intro") ids.add(letterIntroLineId(s.letter));
+      if (s.type === "word-intro") {
+        ids.add(soundoutLineId(s.word));
+        ids.add(wordLineId(s.word));
+      }
+      if (s.type === "build-word") ids.add(wordLineId(s.word));
+      if (s.type === "build-sentence") ids.add(sentenceLineId(s.sentence));
+    }
+    preloadLines([...ids]);
+    for (const m of ALL_MOUTHS) {
+      const img = new Image();
+      img.src = mouthSrc(m);
+    }
+  }, [lesson]);
 
   /* --- Run state --------------------------------------------------- */
   const [index, setIndex] = useState(0);
@@ -276,7 +312,11 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
       </div>
 
       <div className="flex flex-1 flex-col gap-4 p-4">
-        {step.type === "letter-sound" ? (
+        {step.type === "letter-intro" ? (
+          <LetterIntroView step={step} {...common} />
+        ) : step.type === "word-intro" ? (
+          <WordIntroView step={step} {...common} />
+        ) : step.type === "letter-sound" ? (
           <LetterSoundView step={step} {...common} />
         ) : step.type === "letter-shape" ? (
           <LetterShapeView step={step} {...common} />
