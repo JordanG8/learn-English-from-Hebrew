@@ -124,6 +124,25 @@ function soundTyped(code: string, word: string | null, index: number): void {
   sayLetterSound(letter);
 }
 
+/**
+ * The LAST letter of a word or sentence, then the whole thing said. One
+ * sequence, so the word waits for the letter: started separately, the word
+ * took the turn to speak while the letter's sound was still loading, and the
+ * last letter was never heard.
+ */
+function finishWithWord(
+  lastWord: string,
+  lastIndex: number,
+  whole: { lineId: string; text: string; rate: number },
+): void {
+  const ph = phonemeOnType(lastWord, lastIndex);
+  if (!ph) playSfx("letter-lands");
+  void playSequence([
+    ...(ph ? [{ lineId: phonemeLineId(ph), fallback: { text: PHONEMES[ph].as, rate: 0.6 } }] : []),
+    { lineId: whole.lineId, fallback: { text: whole.text, rate: whole.rate }, pauseMs: 450 },
+  ]);
+}
+
 /* ------------------------------------------------------------------ */
 /* Big letter display                                                   */
 /* ------------------------------------------------------------------ */
@@ -879,7 +898,6 @@ export function BuildWordView({
         return;
       }
       if (code === targetCode) {
-        soundTyped(code, step.word, filled);
         setMissHere(0);
         onAnswer(true);
         const next = filled + 1;
@@ -888,14 +906,13 @@ export function BuildWordView({
           doneRef.current = true;
           setDone(true);
           playSfx("celebrate");
-          // The last letter's sound finishes first, then the word, whole.
-          void playSequence([
-            {
-              lineId: wordLineId(step.word),
-              fallback: { text: step.word.toLowerCase(), rate: 0.7 },
-              pauseMs: 650,
-            },
-          ]);
+          finishWithWord(step.word, filled, {
+            lineId: wordLineId(step.word),
+            text: step.word.toLowerCase(),
+            rate: 0.7,
+          });
+        } else {
+          soundTyped(code, step.word, filled);
         }
       } else {
         soundTyped(code, null, 0);
@@ -1069,7 +1086,6 @@ export function BuildSentenceView({
         const before = step.sentence.slice(0, filled);
         const wordStart = before.lastIndexOf(" ") + 1;
         const word = step.sentence.slice(wordStart).split(" ")[0] ?? "";
-        soundTyped(code, code === "Space" ? null : word, filled - wordStart);
         setMissHere(0);
         onAnswer(true);
         const next = filled + 1;
@@ -1078,13 +1094,13 @@ export function BuildSentenceView({
           doneRef.current = true;
           setDone(true);
           playSfx("celebrate");
-          void playSequence([
-            {
-              lineId: sentenceLineId(step.sentence),
-              fallback: { text: step.sentence.toLowerCase(), rate: 0.65 },
-              pauseMs: 650,
-            },
-          ]);
+          finishWithWord(word, filled - wordStart, {
+            lineId: sentenceLineId(step.sentence),
+            text: step.sentence.toLowerCase(),
+            rate: 0.65,
+          });
+        } else {
+          soundTyped(code, code === "Space" ? null : word, filled - wordStart);
         }
       } else {
         if (code.startsWith("Key")) soundTyped(code, null, 0);
