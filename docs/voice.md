@@ -60,6 +60,16 @@ Finnish, "ks" as Polish, "Rrrr" as a **rolled Spanish R**, "I" as **one**,
    −18 LUFS (hisses a little lower, because they are heard as louder), peaks
    limited, 64 kbps mono MP3.
 
+6. **A second opinion on the performances.** After generation, every kept
+   sound-out and letter intro was reviewed again by two listeners (argon and
+   flash) asking only "would you play this to a child as-is?". Where both
+   said no, the line was regenerated from fresh takes (`--skip N`), and left
+   out if it still failed. That review is what caught intros that said their
+   sound twice and J read as "gay" — both now checked in the generator — and
+   it removed the RED and EGG sound-outs, which the app builds from the
+   separate clips instead (as it does for CLOUD, FRIEND, HAND and JUICE,
+   whose sounds run together too closely to cut apart).
+
 ### Sound-outs and letter intros are performances
 
 A word's sound-out — "sss · uh · nnn … sss · uh · nnn … sun!" — and a letter's
