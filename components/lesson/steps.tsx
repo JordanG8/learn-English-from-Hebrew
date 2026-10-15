@@ -206,22 +206,28 @@ export function LetterIntroView({ step, onAdvance }: StepRenderProps & { step: L
   const mouth = letterMouth(step.letter) ?? "aei";
   const [speaking, setSpeaking] = useState(false);
   const [heard, setHeard] = useState(false);
+  // Only the latest playback may touch the screen: a replay tapped mid-line
+  // must not have the old one's ending switch the mouth off under it.
+  const run = useRef(0);
 
   const playSound = useCallback(async () => {
+    const mine = ++run.current;
     await speakLine(letterSoundLineId(step.letter), {
       fallback: { text: data?.soundSpeak ?? step.letter, rate: 0.6 },
-      onStart: () => setSpeaking(true),
+      onStart: () => mine === run.current && setSpeaking(true),
     });
-    setSpeaking(false);
+    if (mine === run.current) setSpeaking(false);
   }, [step.letter, data?.soundSpeak]);
 
   const playIntro = useCallback(async () => {
+    const mine = ++run.current;
     await loadVoiceManifest();
     const id = letterIntroLineId(step.letter);
     if (isRecorded(id) && lineMarks(id)) {
-      await followLine(id, (i) => setSpeaking(i === 0));
-      setSpeaking(false);
+      await followLine(id, (i) => mine === run.current && setSpeaking(i === 0));
+      if (mine === run.current) setSpeaking(false);
     } else {
+      if (mine !== run.current) return;
       await playSound();
     }
     setHeard(true);
@@ -299,6 +305,8 @@ export function WordIntroView({ step, onAdvance }: StepRenderProps & { step: Wor
   const [speaking, setSpeaking] = useState(false);
   const [heard, setHeard] = useState(false);
   const wordTimer = useRef<number | null>(null);
+  // Only the latest playback may touch the screen (see LetterIntroView).
+  const run = useRef(0);
 
   const stopMouthWalk = () => {
     if (wordTimer.current !== null) window.clearInterval(wordTimer.current);
@@ -341,13 +349,17 @@ export function WordIntroView({ step, onAdvance }: StepRenderProps & { step: Wor
   }, []);
 
   const play = useCallback(async () => {
+    const mine = ++run.current;
+    stopMouthWalk();
     await loadVoiceManifest();
+    if (mine !== run.current) return;
     const k = voiced.length;
     const id = soundoutLineId(step.word);
     const marks = lineMarks(id);
     if (isRecorded(id) && marks && marks.length === 2 * k + 1) {
       const [ws, we] = marks[2 * k]!;
       await followLine(id, (i) => {
+        if (mine !== run.current) return;
         if (i < 0) return quiet();
         if (i < 2 * k) return showSeg(i % k);
         setLit({ kind: "word" });
@@ -361,8 +373,8 @@ export function WordIntroView({ step, onAdvance }: StepRenderProps & { step: Wor
           lineId: phonemeLineId(seg.ph!),
           fallback: { text: PHONEMES[seg.ph!].as, rate: 0.6 },
           pauseMs: j === 0 ? 0 : gap,
-          onStart: () => showSeg(j),
-          onEnd: quiet,
+          onStart: () => mine === run.current && showSeg(j),
+          onEnd: () => mine === run.current && quiet(),
         }));
       await playSequence([
         ...pass(600),
@@ -372,6 +384,7 @@ export function WordIntroView({ step, onAdvance }: StepRenderProps & { step: Wor
           fallback: { text: step.word.toLowerCase(), rate: 0.7 },
           pauseMs: 1100,
           onStart: () => {
+            if (mine !== run.current) return;
             setLit({ kind: "word" });
             setSpeaking(true);
             walkMouth(700);
@@ -379,6 +392,7 @@ export function WordIntroView({ step, onAdvance }: StepRenderProps & { step: Wor
         },
       ]);
     }
+    if (mine !== run.current) return;
     stopMouthWalk();
     setSpeaking(false);
     setLit({ kind: "word" });

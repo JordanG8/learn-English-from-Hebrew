@@ -48,13 +48,20 @@ conversation mode.
 
 ## The app's voice
 
-Everything spoken — letter names, letter sounds, words, sentences, and the
-first-visit walkthrough — plays a **recorded human voice** when one exists, and
-falls back to browser TTS only for lines nobody has recorded yet. The 50
-sentences of levels 76–100 are all in that second category right now: they read
-in the browser voice until somebody records them, which needs no deploy. Recording happens at
-`/studio`, from a phone, and a line is audible in the app seconds later with no
-deploy. See `docs/voice.md`.
+Everything spoken — Hebrew narration, letter names, letter sounds, words,
+sentences, and the sound-out that introduces every new word — is one generated
+voice (ElevenLabs v4 via OpenRouter), made and checked by
+`scripts/generate-voice.ts` and committed under `public/voice/`. Each take is
+transcribed blind by a second model and kept only if it says what it should;
+`docs/voice-qa.md` lists what was heard for every clip. A line can still be
+re-recorded by hand at `/studio`. See `docs/voice.md`.
+
+## Phonics
+
+`lib/phonics.ts` is the one table of what every word sounds like, piece by
+piece (CAKE is k·ay·k with a silent E), and which of the twelve mouth shapes in
+`public/mouths/` makes each sound. The word intro, the sound of every
+keypress, and the mouth pictures all read from it, so they can never disagree.
 
 ## Development
 

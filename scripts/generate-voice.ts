@@ -252,6 +252,8 @@ const CONTINUANTS = new Set<PhonemeId>(["f", "l", "m", "n", "s", "v", "z", "sh",
 const VOWELS = new Set<PhonemeId>([
   "a", "e", "i", "o", "u", "ay", "ee", "igh", "oa", "oo", "uu", "ow", "aw", "ar", "or", "er", "air", "yoo",
 ]);
+/** Voiceless stops (and ch): trimmed to their burst plus a breath of vowel. */
+const CLIPPED_STOPS = new Set<PhonemeId>(["p", "t", "k", "ch"]);
 const VOICELESS = new Set<PhonemeId>(["s", "sh", "f", "th", "ks", "ts"]);
 const SIBILANTS = new Set<PhonemeId>(["s", "sh", "ks", "ts", "z"]);
 const LOUDNESS: Partial<Record<PhonemeId, number>> = {
@@ -350,7 +352,7 @@ function normalise(ipa: string): string {
   s = s
     .replace(/ɡ/g, "g").replace(/ʤ/g, "dʒ").replace(/ʧ/g, "tʃ").replace(/ɫ/g, "l")
     .replace(/[rɻɾ]/g, "ɹ").replace(/ɚ/g, "əɹ").replace(/ɜː?ɹ/g, "ɝ")
-    .replace(/[ːˑʰˈˌ.'’\/\[\]\s()-]/g, "");
+    .replace(/[ːˑʰʷʲˈˌ.'’\/\[\]\s()-]/g, "");
   // a trailing breath is how every isolated sound ends; it is not a sound
   if (s.length > 1) s = s.replace(/h+$/, "");
   return s;
@@ -464,13 +466,18 @@ function planFor(line: VoiceLine): Plan {
           return { ok: false, why: `words said aloud: "${spoken.join(" ")}"`, score: 0, passes };
         }
         const good = passes >= 2 && passes <= 4 && wrong < 0 && sameWord;
+        const heardList = (j.sounds ?? []).join("·");
         const why = good
-          ? `heard ${(j.sounds ?? []).join("·")} → "${j.word}"${passes > 2 ? ` (${passes} passes; last two kept)` : ""}`
+          ? `heard ${heardList} → "${j.word}"${passes > 2 ? ` (${passes} passes; last two kept)` : ""}`
           : passes < 2
-            ? `heard ${heard.length} sounds, not whole passes of ${k}: ${(j.sounds ?? []).join("·")}${j.extra ? ` (${j.extra})` : ""}`
-            : !sameWord
-              ? `word heard as "${j.word}"`
-              : `sound ${wrong + 1} heard as /${j.sounds?.[wrong]}/, want /${PHONEMES[pass[wrong % k]!].ipa}/`;
+            ? `heard ${heard.length} sounds, not whole passes of ${k}: ${heardList}${j.extra ? ` (${j.extra})` : ""}`
+            : passes > 4
+              ? `sounded out ${passes} times: ${heardList}`
+              : !sameWord
+                ? `word heard as "${j.word}"`
+                : wrong >= 0
+                  ? `sound ${wrong + 1} heard as /${j.sounds?.[wrong]}/, want /${PHONEMES[pass[wrong % k]!].ipa}/`
+                  : `heard ${heardList}`;
         return { ...graded(good, { ...j, quality: j.intonation }, why), passes };
       },
     };
@@ -486,7 +493,15 @@ function planFor(line: VoiceLine): Plan {
       lang: "he",
       kind: "intro",
       phoneme: ph,
-      inputs: [`${INTRO_TAG} ${carrier.replace("…", "...")} ${EN_SWITCH} ${PERF[ph]}.`],
+      // The voice sometimes says the sentence twice before the sound; three
+      // ways of asking, rotated with the seeds, give it three different
+      // chances not to. (Without the switch, R comes out as a Hebrew ר — the
+      // check catches that, and the next way of asking is tried.)
+      inputs: [
+        `${INTRO_TAG} ${carrier.replace("…", "...")} ${EN_SWITCH} ${PERF[ph]}.`,
+        `${INTRO_TAG} ${carrier.replace("…", "...")}\n${EN_SWITCH} ${PERF[ph]}.`,
+        `${INTRO_TAG} ${carrier.replace("…", "...")} ${PERF[ph]}.`,
+      ],
       check: (j) => {
         const spoken = (j.other_words ?? []).filter((w) => w && w.trim());
         if (spoken.length) return { ok: false, why: `words said aloud: "${spoken.join(" ")}"`, score: 0 };
@@ -597,7 +612,34 @@ Return ONLY a JSON array, one object per clip, in the order given:
 
 const PROMPT: Record<Kind, string> = { clip: JUDGE_PROMPT, soundout: SOUNDOUT_PROMPT, intro: INTRO_PROMPT };
 
+/**
+ * Verdicts are cached by the take's exact bytes and the question asked, so a
+ * rerun after a fix re-listens only to what it has never heard.
+ */
+function verdictKey(file: string, prompt: string): string {
+  return createHash("sha256").update(readFileSync(file)).update(prompt).digest("hex").slice(0, 24);
+}
+
 async function judge(files: string[], prompt = JUDGE_PROMPT): Promise<Judged[]> {
+  const dir = path.join(CACHE, "judged");
+  mkdirSync(dir, { recursive: true });
+  const cached = files.map((f) => {
+    const p = path.join(dir, `${verdictKey(f, prompt)}.json`);
+    return existsSync(p) ? ({ ...JSON.parse(readFileSync(p, "utf8")), file: f } as Judged) : null;
+  });
+  const todo = files.filter((_, i) => !cached[i]);
+  const fresh = todo.length ? await judgeUncached(todo, prompt) : [];
+  return files.map((f, i) => {
+    if (cached[i]) return cached[i]!;
+    const v = fresh[todo.indexOf(f)]!;
+    if (v.ipa || v.text || v.sounds || v.hebrew) {
+      writeFileSync(path.join(dir, `${verdictKey(f, prompt)}.json`), JSON.stringify(v));
+    }
+    return v;
+  });
+}
+
+async function judgeUncached(files: string[], prompt: string): Promise<Judged[]> {
   const content: unknown[] = [{ type: "text", text: prompt }];
   for (const f of files) {
     content.push({ type: "text", text: `Clip: ${path.basename(f)}` });
@@ -761,7 +803,22 @@ function processClip(raw: string, out: string, plan: Plan): void {
   if (ph && SIBILANTS.has(ph)) trim.push("highshelf=f=6500:g=-4");
   ff(["-i", raw, "-ac", "1", "-ar", "44100", "-af", trim.join(","), tmp]);
 
-  if (ph && !VOICELESS.has(ph)) {
+  // A voiceless stop said alone comes with a vowel stuck to it — "puh",
+  // "tuh" — and a listener marked those down for it, rightly: phonics wants
+  // the burst, not a syllable. The burst is noise and the vowel is voice, so
+  // the cut goes just after the voice begins, keeping only a whisper of it.
+  if (ph && CLIPPED_STOPS.has(ph)) {
+    const f = frames(tmp);
+    const max = Math.max(...f.map((x) => x.rms), 1e-9);
+    const start = f.findIndex((x, i) => i >= 2 && x.zcr < 0.14 && x.rms > 0.12 * max);
+    if (start > 0) {
+      const cut = tmp + ".cut.wav";
+      const at = (start / 100 + 0.05).toFixed(3);
+      ff(["-i", tmp, "-af", `atrim=0:${at},afade=t=out:st=${(Number(at) - 0.03).toFixed(3)}:d=0.03`, cut]);
+      writeFileSync(tmp, readFileSync(cut));
+      unlinkSync(cut);
+    }
+  } else if (ph && !VOICELESS.has(ph)) {
     const end = voicedEnd(tmp);
     if (end !== null) {
       const cut = tmp + ".cut.wav";
@@ -861,6 +918,109 @@ function longestPauses(all: Span[], k: number): Span[] | null {
   return chosen.sort((a, b) => a.from - b.from);
 }
 
+/** Per-10ms frames of a PCM buffer: loudness and zero-crossing rate. */
+function frameStats(pcm: Float32Array): { rms: number; zcr: number }[] {
+  const n = SR / 100;
+  const out: { rms: number; zcr: number }[] = [];
+  for (let i = 0; i + n <= pcm.length; i += n) {
+    let e = 0;
+    let z = 0;
+    for (let k = i; k < i + n; k++) {
+      e += pcm[k]! * pcm[k]!;
+      if (k > i && Math.sign(pcm[k]!) !== Math.sign(pcm[k - 1]!)) z++;
+    }
+    out.push({ rms: Math.sqrt(e / n), zcr: z / n });
+  }
+  return out;
+}
+
+/** How voiced a stretch is: the share of its loud frames that are periodic. */
+function voicedShare(stats: { rms: number; zcr: number }[], from: number, to: number): number {
+  const f = stats.slice(Math.floor(from / (SR / 100)), Math.ceil(to / (SR / 100)));
+  const max = Math.max(...f.map((x) => x.rms), 1e-9);
+  const loud = f.filter((x) => x.rms > 0.15 * max);
+  return loud.filter((x) => x.zcr < 0.14).length / Math.max(1, loud.length);
+}
+
+/** What voicing each sound should show: noise, voice, or either. */
+function expectedVoicing(ph: PhonemeId): number | null {
+  if (VOICELESS.has(ph) || ph === "h") return 0.1;
+  if (VOWELS.has(ph) || ["m", "n", "l", "r", "ng", "w", "y"].includes(ph)) return 0.85;
+  return null; // stops and voiced fricatives: a mix, no expectation
+}
+
+function* combinations(n: number, m: number): Generator<number[]> {
+  const idx = Array.from({ length: m }, (_, i) => i);
+  if (m > n) return;
+  while (true) {
+    yield [...idx];
+    let i = m - 1;
+    while (i >= 0 && idx[i] === n - m + i) i--;
+    if (i < 0) return;
+    idx[i]!++;
+    for (let j = i + 1; j < m; j++) idx[j] = idx[j - 1]! + 1;
+  }
+}
+
+/**
+ * WHERE THE SOUNDS ARE, when pause length alone cannot say.
+ *
+ * A voice that paces evenly leaves pauses of nearly equal length inside a
+ * sound (a breath, a stop's closure) and between sounds, so "the longest
+ * pauses" stops being an answer. But a sound-out has a lot of structure to
+ * lean on: each pass is the SAME sounds, so their pieces should match in
+ * length and voicing; and each sound has a known voicing — /s/ is noise, /ʌ/
+ * is voice. Every way of choosing the cuts is scored on exactly that, plus a
+ * mild preference for longer pauses, and the best is taken only if it clearly
+ * beats the runner-up. Otherwise null: refuse, never guess.
+ */
+function alignSoundout(pcm: Float32Array, pass: PhonemeId[], passes: number): Span[] | null {
+  const k = pass.length;
+  const m = passes * k;
+  let cands = pauses(pcm).filter((g) => g.to - g.from >= 0.08 * SR);
+  if (cands.length < m) return null;
+  // keep the problem small: the m + 8 longest candidates, back in time order
+  cands = [...cands]
+    .sort((a, b) => b.to - b.from - (a.to - a.from))
+    .slice(0, m + 8)
+    .sort((a, b) => a.from - b.from);
+  const stats = frameStats(pcm);
+  let best = { cost: Infinity, cuts: [] as Span[] };
+  let second = Infinity;
+  for (const combo of combinations(cands.length, m)) {
+    const cuts = combo.map((i) => cands[i]!);
+    const pieces = chunks(pcm, cuts);
+    const dur = pieces.map((p) => (p.to - p.from) / SR);
+    if (dur.some((x) => x < 0.07) || dur[m]! < 0.25) continue;
+    const voiced = pieces.map((p) => voicedShare(stats, p.from, p.to));
+    let cost = 0;
+    // passes should match each other, sound for sound
+    for (let p = 0; p + 1 < passes; p++) {
+      for (let i = 0; i < k; i++) {
+        const a = p * k + i;
+        const b = (p + 1) * k + i;
+        cost += Math.abs(Math.log(dur[a]! / dur[b]!)) + Math.abs(voiced[a]! - voiced[b]!);
+      }
+    }
+    // each sound should sound like what it is
+    for (let i = 0; i < m; i++) {
+      const want = expectedVoicing(pass[i % k]!);
+      if (want !== null) cost += 1.5 * Math.abs(voiced[i]! - want);
+    }
+    // and a cut should be a real pause
+    for (const c of cuts) cost += 0.6 * Math.max(0, 0.25 - (c.to - c.from) / SR) / 0.25;
+    if (cost < best.cost) {
+      second = best.cost;
+      best = { cost, cuts };
+    } else if (cost < second) {
+      second = cost;
+    }
+  }
+  if (!Number.isFinite(best.cost)) return null;
+  if (second - best.cost < 0.25) return null;
+  return best.cuts;
+}
+
 /**
  * Step one of a performance: trimmed and normalised, but otherwise exactly as
  * the voice performed it — this is what the listener hears and judges.
@@ -930,7 +1090,9 @@ function finishPerformance(file: string, plan: Plan, passes: number): [number, n
     // first does not work — a pause between two sounds can be nearly as long
     // as the one between two passes.)
     const k = plan.pass!.length;
-    const cuts = longestPauses(pauses(pcm), passes * k);
+    // The plain answer first — the longest pauses, when they stand clear —
+    // and the structural one when they do not.
+    const cuts = longestPauses(pauses(pcm), passes * k) ?? alignSoundout(pcm, plan.pass!, passes);
     if (!cuts) return null;
     const pieces = chunks(pcm, cuts);
     const firstKept = (passes - 2) * k; // drop any extra passes at the start
@@ -1011,6 +1173,20 @@ function attemptsFor(plan: Plan): { input: string; seed: number }[] {
 }
 
 async function main() {
+  // Offline: how would this take be cut? (--try-split <mp3> <line id> [passes])
+  const trySplit = opt("--try-split");
+  if (trySplit) {
+    const id = args[args.indexOf("--try-split") + 2]!;
+    const passes = Number(args[args.indexOf("--try-split") + 3] ?? 2);
+    const line = VOICE_LINES.find((l) => l.id === id);
+    if (!line) throw new Error(`no line ${id}`);
+    const copy = path.join(CACHE, "try-split.mp3");
+    mkdirSync(CACHE, { recursive: true });
+    writeFileSync(copy, readFileSync(trySplit));
+    const marks = finishPerformance(copy, planFor(line), passes);
+    console.log(marks ? marks.map(([a, b]) => `${(a / 1000).toFixed(2)}–${(b / 1000).toFixed(2)}`).join("  ") : "refused");
+    return;
+  }
   if (!KEY) {
     console.error("Set OPENROUTER_API_KEY.");
     process.exit(1);
@@ -1035,11 +1211,16 @@ async function main() {
 
     const fresh = await pool(todo, 6, async (s) => {
       const next = s.queue.shift()!;
-      const raw = await synth(next.input, s.plan.lang, next.seed);
       const file = path.join(CACHE, "takes", `${s.plan.line.id}--${s.tried.length}.mp3`);
       const a: Attempt = { ...next, file };
-      if (s.plan.kind === "clip") processClip(raw, file, s.plan);
-      else preparePerformance(raw, file);
+      // A failed request or a file ffmpeg chokes on costs this take, not the run.
+      try {
+        const raw = await synth(next.input, s.plan.lang, next.seed);
+        if (s.plan.kind === "clip") processClip(raw, file, s.plan);
+        else preparePerformance(raw, file);
+      } catch (e) {
+        a.verdict = { ok: false, why: `could not make the take: ${(e as Error).message.slice(0, 120)}`, score: 0 };
+      }
       s.tried.push(a);
       console.log(`  · ${s.plan.line.id} take ${s.tried.length}${a.verdict ? ` — ${a.verdict.why}` : ""}`);
       return { s, a };
@@ -1077,10 +1258,20 @@ async function main() {
       );
       batch.forEach(({ s, a }, i) => {
         const v = verdicts[i]!;
-        a.verdict = s.plan.check(v);
+        // One odd answer from the listener fails one take — never the run.
+        try {
+          a.verdict = s.plan.check(v);
+        } catch (e) {
+          a.verdict = { ok: false, why: `could not grade: ${(e as Error).message}`, score: 0 };
+        }
         if (v.judge && v.judge !== JUDGE_MODEL) a.verdict.why += ` · by ${v.judge.split("/")[1]}`;
         if (a.verdict.ok && s.plan.kind !== "clip") {
-          const marks = finishPerformance(a.file, s.plan, a.verdict.passes ?? 2);
+          let marks: [number, number][] | null = null;
+          try {
+            marks = finishPerformance(a.file, s.plan, a.verdict.passes ?? 2);
+          } catch {
+            marks = null;
+          }
           if (marks) a.marks = marks;
           else a.verdict = { ...a.verdict, ok: false, why: `${a.verdict.why} — but its pauses do not split cleanly into those sounds` };
         }
@@ -1096,6 +1287,7 @@ async function main() {
   const now = Date.now();
   const rows = new Map<string, string>();
   const marks = new Map<string, [number, number][]>();
+  const written = new Set<string>();
   for (const { plan, tried } of state.values()) {
     const passed = tried.find((t) => t.verdict?.ok);
     const best =
@@ -1114,6 +1306,7 @@ async function main() {
       continue;
     }
     writeFileSync(dest, readFileSync(best.file));
+    written.add(plan.line.id);
     if (best.marks) marks.set(plan.line.id, best.marks);
     rows.set(
       plan.line.id,
@@ -1121,14 +1314,14 @@ async function main() {
     );
   }
 
-  writeIndex(now, marks);
+  writeIndex(now, marks, written);
   const failed = writeReport(rows);
   if (flag("--preview")) renderPreviews();
   console.log(`kept ${rows.size} clips · ${failed} need a human ear (see docs/voice-qa.md)`);
 }
 
 /** index.json lists every clip in public/voice, so it is right however the run was scoped. */
-function writeIndex(now: number, marks: Map<string, [number, number][]>) {
+function writeIndex(now: number, marks: Map<string, [number, number][]>, written: Set<string>) {
   const known = new Set(VOICE_LINES.map((l) => l.id));
   const indexPath = path.join(OUT_DIR, "index.json");
   const prev = existsSync(indexPath)
@@ -1145,11 +1338,14 @@ function writeIndex(now: number, marks: Map<string, [number, number][]>) {
     .sort()
     .map((id) => {
       const file = path.join(OUT_DIR, `${id}.mp3`);
-      const fresh = statSync(file).mtimeMs > now - 60 * 60 * 1000;
+      const fresh = written.has(id);
       return {
         id,
         url: `/voice/${id}.mp3`,
-        updatedAt: fresh ? now : (prevAt.get(id) ?? now),
+        // Never older than the file itself: in `npm run dev` the live store
+        // is this same folder, stamped by mtime, and the bundled entry —
+        // the one with the time marks — must win the tie (lib/voice/manifest.ts).
+        updatedAt: Math.max(prevAt.get(id) ?? 0, Math.ceil(statSync(file).mtimeMs), fresh ? now : 0),
         size: statSync(file).size,
         durationMs: Math.round(probeDuration(file) * 1000),
         ...(() => {

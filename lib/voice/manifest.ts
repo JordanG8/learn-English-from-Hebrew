@@ -2,14 +2,22 @@
  * THE VOICE MANIFEST — which lines actually have a human recording, and
  * where the audio for one lives.
  *
- * There are two sources, merged, in this order of precedence:
+ * There are two sources, merged:
  *
  *  1. `/api/voice/manifest` — the live store (Vercel Blob in production, the
  *     local filesystem in `npm run dev`). This is what makes a line recorded
  *     on a phone audible in the app seconds later, with no deploy.
  *  2. `/voice/index.json` — clips committed into `public/voice/`. These ship
- *     with the build, are on the CDN, and work offline. This is where
- *     recordings should end up once they are final (see docs/voice.md).
+ *     with the build, are on the CDN, and work offline. This is where the
+ *     generated voice lives (scripts/generate-voice.ts, docs/voice.md).
+ *
+ * When both have a line, the NEWER one wins. It used to be "the store always
+ * wins", which was right while the store was the only source of new audio —
+ * and wrong the day the whole voice was regenerated: every old recording
+ * still sitting in the store would have played over its replacement, two
+ * voices in one lesson. Newest-wins keeps both promises: a fresh generation
+ * replaces old recordings, and a line re-recorded in the studio afterwards
+ * still replaces the generated one.
  *
  * FAILURE POLICY: every fetch here is allowed to fail. A missing manifest
  * means "nothing is recorded", which degrades to the TTS fallback — never to
@@ -83,6 +91,11 @@ export function loadVoiceManifest(force = false): Promise<VoiceManifest> {
       next[c.id] = { ...c, source: "bundled" };
     }
     for (const c of store?.clips ?? []) {
+      const bundled = next[c.id];
+      // A tie goes to the bundled clip: in `npm run dev` the "store" IS
+      // public/voice, so every clip appears twice — and only the bundled
+      // entry carries the generator's time marks.
+      if (bundled && bundled.updatedAt >= c.updatedAt) continue;
       next[c.id] = { ...c, source: "store" };
     }
     inFlight = null;

@@ -1,8 +1,8 @@
 /**
  * RECORD / RE-RECORD / DELETE one voice line.
  *
- * POST /api/voice/clip?id=letter-sound-B   body: the audio bytes
- * DELETE /api/voice/clip?id=letter-sound-B
+ * POST /api/voice/clip?id=phoneme-b   body: the audio bytes
+ * DELETE /api/voice/clip?id=phoneme-b
  *
  * Guards, in the order they fire:
  *  1. WRITE ACCESS. See lib/voice/guard.ts — a deployed app needs a passcode.
