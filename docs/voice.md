@@ -1,11 +1,6 @@
 # The app's voice
 
-Everything the app says out loud — the Hebrew narration, every letter's name
-and sound, every word and sentence, and the sound-out that introduces each new
-word — is **one generated voice**: ElevenLabs v4, voice "Sarah", reached
-through OpenRouter, made by `scripts/generate-voice.ts` and committed to
-`public/voice/`. One model, one voice, one processing chain, so the app sounds
-like one person from the first screen to the last.
+Most existing recordings use ElevenLabs v4, voice Sarah, generated through OpenRouter by scripts/generate-voice.ts. The 26 sound-choice questions use Google Gemini TTS voice Kore through Vercel AI Gateway. These are a separate female voice; see the generation and review details below.
 
 The browser's synthesiser is still there, but only as the fallback for a line
 that has no clip. `/studio` still works too: a line re-recorded there replaces
@@ -274,3 +269,25 @@ the same `phoneme-a` /æ/ clip used by the keyboard. The versioned URL and
 new manifest timestamp replace the old take in browser caches and the store
 merge. The earlier automated QA for the combined take missed the name error;
 its pass should not be treated as listening verification of this replacement.
+
+### Sound-choice questions (2026-10-21)
+
+Only the question “איזה צליל עושה האות …?” is narrated automatically for each
+letter. The question uses the letter name, never its answer sound. Tap the
+question to replay it. Choosing a sound or leaving the step cancels narration.
+The smaller listening instructions are not narrated.
+
+Generate with AI_GATEWAY_API_KEY in the process environment:
+
+```sh
+node --experimental-strip-types --no-warnings --import ./scripts/ts-resolve.mjs scripts/generate-sound-questions.ts
+```
+
+Requires ffmpeg and ffprobe. The script uses google/gemini-3.8-flash-tts,
+voice Kore, and a separate blind audio review with google/gemini-3.8-flash.
+Only takes with the full question, correct letter name, no answer or extra
+instructions, naturalness at least 7/10, and duration 1–8 seconds are published.
+The automated review results are in sound-question-qa.json; these are model
+judgments, not a human listening sign-off. Raw takes are cached outside Git.
+Commit the 26 MP3 files, manifest, and review report. Playback uses static
+recordings and needs no AI Gateway credential in the browser or deployment.

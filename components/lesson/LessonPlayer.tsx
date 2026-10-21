@@ -42,6 +42,7 @@ import {
   phonemeLineId,
   sentenceLineId,
   soundoutLineId,
+  soundQuestionLineId,
   wordLineId,
 } from "@/lib/voice/lines";
 import {
@@ -118,6 +119,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
     const ids = new Set<string>(PHONEME_IDS.map(phonemeLineId));
     for (const s of lesson.steps) {
       if (s.type === "letter-intro") ids.add(letterIntroLineId(s.letter));
+      if (s.type === "letter-sound" && s.mode === "sound") ids.add(soundQuestionLineId(s.letter));
       if (s.type === "word-intro") {
         ids.add(soundoutLineId(s.word));
         ids.add(wordLineId(s.word));

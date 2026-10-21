@@ -99,6 +99,9 @@ export const letterSoundLineId = (letter: string): string =>
 export const letterIntroLineId = (letter: string): string =>
   `narration-intro-${letter.toUpperCase()}`;
 
+export const soundQuestionLineId = (letter: string): string =>
+  `narration-sound-question-${letter.toUpperCase()}`;
+
 /**
  * A word sounded out in ONE breath of one voice — "sss · uh · nnn, sss · uh ·
  * nnn, sun!" — rather than stitched from separate clips. Stitched, every
@@ -302,7 +305,18 @@ export const VOICE_GROUPS: readonly VoiceGroup[] = [
     id: "letter-intro",
     titleHe: "פתיחת האותיות",
     blurbHe: "«זאת האות איי, הצליל שלה הוא…» — ואז הצליל עצמו.",
-    lines: letterIntroLines(),
+    lines: [
+      ...letterIntroLines(),
+      ...LETTERS.map((d, i): VoiceLine => ({
+        id: soundQuestionLineId(d.letter),
+        group: "letter-intro",
+        lang: "he",
+        text: `איזה צליל עושה האות ${d.nameHe}?`,
+        directionHe: "קראו רק את השאלה, עם שם האות. בלי הצליל שלה ובלי ההוראות שמתחת לשאלה.",
+        fallback: null,
+        order: LETTERS.length + i,
+      })),
+    ],
   },
   {
     id: "letter-name",

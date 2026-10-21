@@ -59,6 +59,7 @@ import {
   phonemeLineId,
   sentenceLineId,
   soundoutLineId,
+  soundQuestionLineId,
   wordLineId,
 } from "@/lib/voice/lines";
 import { loadVoiceManifest } from "@/lib/voice/manifest";
@@ -565,8 +566,8 @@ const CHOICE_MARKS = ["●", "▲", "■", "★"] as const;
  * Nothing is graded until they press the button underneath — so listening to
  * all four is free, and the answer is a decision, not a reflex.
  *
- * Nothing plays on its own when the screen opens: the old screen played the
- * letter's sound first, which answered its own question.
+ * Only the question plays when the screen opens. It says the letter's NAME,
+ * never its sound, so the child still has to listen to the choices.
  */
 export function SoundChoiceView({
   step,
@@ -578,23 +579,38 @@ export function SoundChoiceView({
   const [playing, setPlaying] = useState<string | null>(null);
   const [wrong, setWrong] = useState<string[]>([]);
   const [solved, setSolved] = useState(false);
+  const questionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setPicked(null);
     setPlaying(null);
     setWrong([]);
     setSolved(false);
-    return () => stopSpeech();
-  }, [step.id]);
+    questionTimer.current = setTimeout(() => {
+      questionTimer.current = null;
+      void speakLine(soundQuestionLineId(step.letter));
+    }, 350);
+    return () => {
+      if (questionTimer.current) clearTimeout(questionTimer.current);
+      stopSpeech();
+    };
+  }, [step.id, step.letter]);
 
   const listen = async (letter: string) => {
     if (solved) return;
+    if (questionTimer.current) clearTimeout(questionTimer.current);
     setPicked(letter);
     setPlaying(letter);
     await speakLine(letterSoundLineId(letter), {
       fallback: { text: getLetter(letter)?.soundSpeak ?? letter, rate: 0.6 },
     });
     setPlaying((p) => (p === letter ? null : p));
+  };
+
+  const replayQuestion = () => {
+    if (questionTimer.current) clearTimeout(questionTimer.current);
+    setPlaying(null);
+    void speakLine(soundQuestionLineId(step.letter));
   };
 
   const submit = () => {
@@ -620,7 +636,14 @@ export function SoundChoiceView({
           {step.letter}
           <span className="opacity-40"> {data?.lower}</span>
         </GiantLetter>
-        <p className="text-2xl font-bold">{step.promptHe}</p>
+        <button
+          type="button"
+          onClick={replayQuestion}
+          aria-label={`השמע את השאלה: ${step.promptHe}`}
+          className="min-h-16 rounded-xl px-3 text-2xl font-bold focus-visible:outline-2 focus-visible:outline-offset-4"
+        >
+          {step.promptHe} <span aria-hidden="true">🔊</span>
+        </button>
         <p className="text-lg text-ink-soft">
           <span aria-hidden>👂 </span>
           לחצו על כל רמקול כדי לשמוע, ואז בחרו
