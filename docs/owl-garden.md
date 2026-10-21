@@ -1,3 +1,7 @@
+# Status: owl rewards paused
+
+The owl entry points and reward integration are commented out. /garden redirects to /map. Original course stars and all learning/matching improvements remain active. Owl assets, implementation, and saved data are retained for later. The notes below describe the paused feature.
+
 # Combined course and owl rewards
 
 The original home screen, 100-level road, letter/word lessons, mouth animations,

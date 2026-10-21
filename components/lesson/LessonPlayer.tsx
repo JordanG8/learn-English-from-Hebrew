@@ -22,8 +22,8 @@
  */
 
 import { tintStyle } from "@/lib/palette";
-import { useGarden } from "@/lib/garden/use-garden";
-import { awardCourseAnswer, importCourseStars, GIFT_THRESHOLDS } from "@/lib/garden/progress";
+// Owl rewards paused: import { useGarden } from "@/lib/garden/use-garden";
+// Owl rewards paused: import { awardCourseAnswer, importCourseStars, GIFT_THRESHOLDS } from "@/lib/garden/progress";
 import { introducedLetters } from "@/lib/curriculum/matching";
 import { LetterMatchView } from "./LetterMatchView";
 import { useStudioUnlock } from "@/lib/studio-unlock";
@@ -75,10 +75,10 @@ type Phase = "playing" | "feedback" | "done";
 export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
   const router = useRouter();
   const { progress, ready, attempt, completeLesson, learnWord } = useProgress();
-  const garden = useGarden();
+// Owl rewards paused:   const garden = useGarden();
   const unlockAll = useStudioUnlock();
-  const award = garden.update;
-  useEffect(() => { if (ready && garden.ready && !garden.progress.courseImported) award(p => importCourseStars(p,progress.stars)); }, [ready,garden.ready,garden.progress.courseImported,progress.stars,award]);
+// Owl rewards paused:   const award = garden.update;
+// Owl rewards paused:   useEffect(() => { if (ready && garden.ready && !garden.progress.courseImported) award(p => importCourseStars(p,progress.stars)); }, [ready,garden.ready,garden.progress.courseImported,progress.stars,award]);
 
   /* --- Resolve the actual lesson ---------------------------------- */
   // A review lesson's content is computed once, when the lesson opens. It is
@@ -177,7 +177,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
       if (step.type !== "letter-match" || correct) skills.forEach((s) => attempt(s, { correct, hinted }));
 
       if (correct) {
-        award(p => awardCourseAnswer(p, stored.id, step.id));
+// Owl rewards paused:         award(p => awardCourseAnswer(p, stored.id, step.id));
         // build-word and build-sentence own their own pacing: they show the
         // hero celebration and call onAdvance themselves.
         if (step.type === "build-word" || step.type === "build-sentence" || step.type === "letter-match") return;
@@ -201,7 +201,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
         window.setTimeout(advance, 1600);
       }
     },
-    [step, phase, forceHint, attemptsHere, attempt, index, advance,award,stored.id],
+    [step, phase, forceHint, attemptsHere, attempt, index, advance,stored.id],
   );
 
   /* --- Completion --------------------------------------------------- */
@@ -289,7 +289,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
           <SecondaryButton icon="🔁" onClick={restart} className="w-full">
             עוד פעם
           </SecondaryButton>
-          <SecondaryButton icon="🦉" onClick={() => router.push("/garden")} className="w-full">הינשוף והפרסים שלי · {garden.progress.earned.length} ⭐</SecondaryButton>
+          {/* Owl rewards paused for now. <SecondaryButton icon="🦉" onClick={() => router.push("/garden")} className="w-full">הינשוף והפרסים שלי · {garden.progress.earned.length} ⭐</SecondaryButton> */}
           <SecondaryButton icon="🏠" onClick={() => router.push("/")} className="w-full">
             בית
           </SecondaryButton>
@@ -324,7 +324,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
       <ScreenHeader title={lesson.titleHe} onBack={() => router.push("/map")} />
       <div className="px-4">
         <StepBar current={index} total={steps.length} />
-        <p className="mt-2 text-center text-sm text-ink-soft" aria-live="polite">🦉 {garden.progress.earned.length} כוכבי גינה{GIFT_THRESHOLDS[garden.progress.gifts.length] ? ` · עוד ${Math.max(0,GIFT_THRESHOLDS[garden.progress.gifts.length]-garden.progress.earned.length)} למתנה` : ""}</p>
+        {/* Owl rewards paused for now. <p className="mt-2 text-center text-sm text-ink-soft" aria-live="polite">🦉 {garden.progress.earned.length} כוכבי גינה{GIFT_THRESHOLDS[garden.progress.gifts.length] ? ` · עוד ${Math.max(0,GIFT_THRESHOLDS[garden.progress.gifts.length]-garden.progress.earned.length)} למתנה` : ""}</p> */}
       </div>
 
       <div className="flex flex-1 flex-col gap-4 p-4">
