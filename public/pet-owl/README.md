@@ -7,7 +7,11 @@ Original generated artwork for the English learning reward garden.
 - preview.html: standalone interactive animation preview (not yet connected to learning progress).
 
 Rows, top to bottom: idle/blink; celebrate; hop; sleep. Columns run left to right.
-Use background-size: 400% 400%; x/y offsets are 0%, 33.333333%, 66.666667%, 100%.
+The source is 1254 × 1254 and the artwork does not fit an exact uniform grid.
+Use the measured frame rectangles in preview.html, with four pixels of padding.
+Nested SVG viewports isolate each pose without modifying the source PNG.
+Each pose is horizontally centered and aligned to a shared foot baseline; hop
+frames intentionally rise above it.
 Do not interpolate between cells. Each sequence uses four discrete frames.
 The preview supports pause and prefers-reduced-motion. A production celebration
 should play briefly after earned progress, then return to idle. Sleep is an
