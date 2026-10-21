@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { playSequence, playSfx, preloadLines, primeAudio, speakLine, stopSpeech } from "@/lib/audio";
 import { useSound } from "@/lib/sound-pref";
 import { CUES, GIFTS, MISSIONS, type GardenStep } from "@/lib/garden/curriculum";
-import { answerGarden, claimGift, completeMission, dueQuestions, placeGift, retainedWords } from "@/lib/garden/progress";
+import { answerGarden, claimGift, completeMission, dueQuestions, missionStartIndex, placeGift, retainedWords } from "@/lib/garden/progress";
 import { useGarden } from "@/lib/garden/use-garden";
 import { Owl } from "./Owl";
 
@@ -25,17 +25,15 @@ function Activity({ step, onAnswer, onNext, alreadyEarned, muted }: {
   const [help, setHelp] = useState(false);
   const [typed, setTyped] = useState("");
   const [feedback, setFeedback] = useState("");
-  const [audioFailed, setAudioFailed] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const submitted = useRef(false);
   const cue = CUES[step.cue];
   const narrate = async () => {
     primeAudio();
-    const heard = await playSequence([
+    await playSequence([
       { lineId: `garden-${step.id}`, fallback: { text: step.instruction, lang: "he-IL", rate: .9 } },
       ...(!step.scene ? [cueAudio(step.cue)] : []),
     ]);
-    setAudioFailed(!heard);
   };
   useEffect(() => {
     heading.current?.focus();
@@ -89,7 +87,6 @@ function Activity({ step, onAnswer, onNext, alreadyEarned, muted }: {
         <button className="garden-text-button" onClick={showHelp}>אפשר רמז?</button>
       </>}
     </>}
-    {audioFailed && !muted && <p className="garden-notice">לא שמענו? אפשר ללחוץ שוב על הרמקול. ההסבר מופיע גם בכתב.</p>}
   </section>;
 }
 
@@ -108,9 +105,7 @@ export function GardenAdventure() {
   const start = (mission: number) => {
     primeAudio(); stopSpeech(); setFinished(false);
     const steps = MISSIONS[mission].steps;
-    const unanswered = steps.findIndex(s => s.kind !== "teach" && !progress.earned.includes(s.id));
-    let index = 0;
-    if (unanswered > 0) for (let i=0; i<unanswered; i++) if (steps[i].kind === "teach") index=i;
+    const index = missionStartIndex(progress, mission);
     setRun({ mission, steps, index, review: false });
   };
   const next = () => {
@@ -126,13 +121,13 @@ export function GardenAdventure() {
     {run ? <>
       <div className="mission-top"><button className="garden-secondary" onClick={() => { stopSpeech(); setRun(null); }}>חזרה לגינה</button><span>{run.review ? "נזכרים יחד" : MISSIONS[run.mission].title} · {run.index+1}/{run.steps.length}</span></div>
       <progress aria-label="התקדמות במשימה" max={run.steps.length} value={run.index} />
-      <p className="garden-feedback">{giftsAvailable ? "🎁 מתנה מחכה לכם בגינה!" : progress.gifts.length < GIFTS.length ? `עוד ${3-(stars%3)} כוכבים למתנה הבאה` : "⭐ כל הצלחה מצטרפת לאוסף שלכם"}</p>
+      <p className="garden-feedback">{giftsAvailable ? "🎁 מתנה מחכה לכם בגינה!" : progress.gifts.length < GIFTS.length ? stars%3 === 2 ? "עוד כוכב אחד למתנה הבאה" : `עוד ${3-(stars%3)} כוכבים למתנה הבאה` : "⭐ כל הצלחה מצטרפת לאוסף שלכם"}</p>
       <Activity key={`${run.review ? "review" : "mission"}-${run.steps[run.index].id}-${sound.on}`} step={run.steps[run.index]} muted={!sound.on} alreadyEarned={!run.review && progress.earned.includes(run.steps[run.index].id)} onAnswer={(correct, independent) => update(p => answerGarden(p, run.steps[run.index].id, correct, independent, run.review))} onNext={next} />
     </> : <>
       <div className="garden-heading"><div><p className="garden-eyebrow">לומדים אנגלית, מגדלים חברות</p><h1>{finished ? "עשינו את זה ביחד!" : "איזו הרפתקה נעשה היום?"}</h1></div><button className="garden-text-button" aria-pressed={paused} onClick={() => setPaused(p => !p)}>{paused ? "הפעלת תנועה" : "עצירת תנועה"}</button></div>
       <div className="owl-garden" aria-label="הגינה שלנו"><div className="garden-pet"><Owl mood={finished ? "hop" : "idle"} paused={paused} /></div>
         {[0,1,2].map(slot => { const giftId = Object.keys(progress.placed).find(id => progress.placed[id] === slot); const gift = GIFTS.find(g => g.id === giftId); return <button key={slot} className={`garden-slot slot-${slot} ${selectedGift ? "placing" : ""}`} aria-label={selectedGift ? `הנחת הפריט במקום ${slot+1}` : gift ? gift.title : `מקום לקישוט ${slot+1}`} disabled={!selectedGift} onClick={() => { if (selectedGift) { update(p => placeGift(p, selectedGift, slot)); setSelectedGift(null); setNotice("הקישוט במקום! אפשר להזיז אותו בכל זמן."); } }}>{gift ? gift.emoji : selectedGift ? "＋" : ""}</button>; })}
-        <div className="garden-goal">{giftsAvailable ? "🎁 מתנה חדשה מחכה לבחירה!" : progress.gifts.length === GIFTS.length ? "כל המתנות שלכם! ממשיכים ללמוד ולשחק." : `עוד ${3-(stars%3)} כוכבים למתנה הבאה`}</div>
+        <div className="garden-goal">{giftsAvailable ? "🎁 מתנה חדשה מחכה לבחירה!" : progress.gifts.length === GIFTS.length ? "כל המתנות שלכם! ממשיכים ללמוד ולשחק." : stars%3 === 2 ? "עוד כוכב אחד למתנה הבאה" : `עוד ${3-(stars%3)} כוכבים למתנה הבאה`}</div>
       </div>
       {selectedGift && <p role="status" className="garden-hint">בחרו אחד משלושת המקומות בגינה. <button className="garden-text-button" onClick={() => setSelectedGift(null)}>ביטול</button></p>}
       <p role="status" className="garden-feedback">{notice}</p>

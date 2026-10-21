@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { answerGarden, claimGift, coerceGarden, completeMission, dueQuestions, freshGarden, placeGift, retainedWords } from "@/lib/garden/progress";
+import { answerGarden, claimGift, coerceGarden, completeMission, dueQuestions, freshGarden, missionStartIndex, placeGift, retainedWords } from "@/lib/garden/progress";
 import { MISSIONS, QUESTIONS } from "@/lib/garden/curriculum";
 let p = freshGarden();
+for (let i=0; i<MISSIONS.length; i++) assert.equal(missionStartIndex(p,i),0,"new missions never skip teaching cards");
 assert.deepEqual(coerceGarden(null), p);
 assert.deepEqual(coerceGarden({ earned: ["fake", 3], gifts: ["flowers"], placed: {flowers: 9} }), p);
 assert.equal(completeMission(p, "hello").completed.length, 0);

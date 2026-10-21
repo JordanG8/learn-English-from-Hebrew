@@ -38,6 +38,14 @@ export function completeMission(p: GardenProgress, id: string): GardenProgress {
   if (!mission || !mission.steps.filter(s => s.kind !== "teach").every(s => p.earned.includes(s.id))) return p;
   return { ...p, completed: [...new Set([...p.completed, id])] };
 }
+export function missionStartIndex(p: GardenProgress, missionIndex: number): number {
+  const steps = MISSIONS[missionIndex]?.steps ?? [];
+  if (!steps.some(s => p.earned.includes(s.id))) return 0;
+  const unanswered = steps.findIndex(s => s.kind !== "teach" && !p.earned.includes(s.id));
+  let index = 0;
+  for (let i=0; i<unanswered; i++) if (steps[i].kind === "teach") index=i;
+  return index;
+}
 export function claimGift(p: GardenProgress, id: string): GardenProgress {
   if (!GIFTS.some(g => g.id === id) || p.gifts.includes(id) || p.gifts.length >= Math.floor(p.earned.length / 3)) return p;
   return { ...p, gifts: [...p.gifts, id] };
