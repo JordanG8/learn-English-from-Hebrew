@@ -124,7 +124,18 @@ function ramp(position: number, length: number, lo: number, hi: number): number 
 /* Step builders — one per Step variant                                 */
 /* ------------------------------------------------------------------ */
 
-export function soundStep(d: LetterData, taught: readonly string[], seed = 0): Step {
+// Listening choices need acoustic contrast, not the visual confusables used
+// by shape exercises. Take one representative from each other sound family:
+// never M against N, several vowels, voiced/unvoiced pairs, or C against K.
+const SOUND_FAMILIES = [
+  { letters: "AEIOU", choice: "A" },
+  { letters: "FHSVXZ", choice: "S" },
+  { letters: "MN", choice: "M" },
+  { letters: "BCDGJKPQT", choice: "T" },
+  { letters: "LRWY", choice: "L" },
+] as const;
+
+export function soundStep(d: LetterData, _taught: readonly string[], seed = 0): Step {
   /*
    * The options are LETTERS, and the child chooses between the sounds they
    * make — tapping a speaker hears it, and nothing is graded until they press
@@ -134,11 +145,9 @@ export function soundStep(d: LetterData, taught: readonly string[], seed = 0): S
   const mine = letterPhoneme(d.letter);
   const seen = new Set([mine]);
   const others: string[] = [];
-  // A's visual confusables (E/O/C) are poor first listening choices:
-  // use a hiss, a hum, and a stop, clearly distinct from its short vowel.
-  const candidates = d.letter === "A"
-    ? ["S", "M", "T"]
-    : distractorsFor(d.letter, taught, 25, true);
+  const candidates = SOUND_FAMILIES
+    .filter((family) => !family.letters.includes(d.letter.toUpperCase()))
+    .map((family) => family.choice);
   for (const l of candidates) {
     const ph = letterPhoneme(l);
     if (!ph || seen.has(ph)) continue;
