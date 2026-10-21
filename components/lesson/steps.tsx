@@ -48,6 +48,7 @@ import {
 import {
   PHONEMES,
   letterMouth,
+  letterPhoneme,
   mouthSrc,
   phonemeOnType,
   segmentsFor,
@@ -470,6 +471,10 @@ export function WordIntroView({ step, onAdvance }: StepRenderProps & { step: Wor
 
       <MouthFace mouth={mouth} speaking={speaking} />
 
+      {segments.some(s => s.letters.length > 1 || s.ph !== letterPhoneme(s.letters)) && <div className="max-w-lg rounded-2xl border-2 border-brand-soft bg-card p-4 text-center">
+        <button className="min-h-14 text-lg font-bold" onClick={() => void speakLine("pattern-instructions",{fallback:{text:"במילה הזאת יש אותיות שנשמעות אחרת, או מתחברות לצליל אחד. לחצו על כל חלק כדי לשמוע. אות שקטה לא משמיעה צליל.",lang:"he-IL"}})}>🔊 נכיר את החלקים המיוחדים לפני שמקלידים</button>
+        <div className="flex flex-wrap justify-center gap-2" dir="ltr">{segments.filter(s => s.letters.length > 1 || s.ph !== letterPhoneme(s.letters)).map(s => <button key={s.start} className="min-h-16 rounded-xl border-2 border-brand-soft bg-white px-4 text-xl font-bold" onClick={() => s.ph ? void speakLine(phonemeLineId(s.ph)) : void speakLine("silent-letter-instructions",{fallback:{text:"האות הזאת שקטה במילה הזאת. כותבים אותה, אבל לא משמיעים צליל משלה.",lang:"he-IL"}})}>{s.letters} <small dir="rtl">{s.ph ? "🔊" : "שקטה"}</small></button>)}</div>
+      </div>}
       <div className="flex w-full max-w-sm flex-col items-center gap-3">
         <button
           type="button"

@@ -1,33 +1,43 @@
-# Owl garden pilot
+# Combined course and owl rewards
 
-The English-first entry point is /garden, linked from the home screen. The original
-/map course and efh:progress storage are untouched. The pilot contains three
-missions: morning/night greetings; cat/dog/ball listening comprehension; CAT
-sound building followed by my cat/my dog. Teach cards precede every tested cue.
+The original home screen, 100-level road, letter/word lessons, mouth animations,
+keyboard, and existing profile remain the main game. /garden is a separate
+reward destination, available from home, map and lesson completion. The pilot's
+standalone missions are no longer rendered. Their old saved gifts remain valid.
 
-Garden data is versioned separately at efh:owl-garden:v1 in this browser. It is
-not synced across devices. Failed saves show a visible warning. Correct answers,
-including assisted retries, earn one star per question. Replaying cannot farm
-stars. Every three stars unlock a gift choice; stars are never deducted. Six
-collectibles can be placed in three replaceable garden slots without losing
-ownership. Decorations currently use platform emoji.
+Correct course answers earn a garden star once per lesson/step, including a
+successful retry. Existing course stars are imported once as a welcome credit.
+Garden gift thresholds are 3, 10, 20, 35, 55 and 80; no stars are deducted. Existing
+pilot gifts survive the new thresholds. No streak penalties or speed rewards.
+Garden storage is browser-local and separate from the unchanged course profile.
 
-Returning on a later local calendar day offers up to three questions, oldest
-successful review first. Each can earn one review star per day. No speed score,
-missed-day penalty, or streak loss. Independent success is tracked separately
-from assisted or muted/text-mode practice. The word badge requires independently
-recognising all three vocabulary words on at least two distinct dates.
+The first matching exercise follows S/A/T instruction, and another appears at
+every third introduced letter. Mixed reviews substitute matching for three
+repetitive questions when at least three letters are introduced. /matching is
+also available from the map after three completed letter lessons. Each board
+has exactly three different taught letters and three distinct phonemes (never
+C and K together). Columns are symbol, spoken/written name, spoken sound.
+Dragging and tapping two endpoints are supported. Correct lines remain after
+mistakes; examples are visibly dashed. Completion requires all six links.
 
-Seventeen Hebrew instructions are recorded with Gemini TTS Kore via AI Gateway.
-Existing English and phoneme recordings are reused. See garden-voice-qa.json
-for automated blind listening review (not human sign-off). The source key is
-not required at runtime. Browser speech is only a fallback. The recordings are
-also available in the voice studio's garden group.
+Early mixed-review fallback only uses introduced letters. Every word build is
+preceded by its word introduction and all its letter introductions. Newly used
+sentence words now receive their own introduction before sentence entry.
+Non-basic grapheme/sound combinations and silent letters receive explicit,
+playable explanations on word-introduction screens. Three new Hebrew guides
+have recorded audio with automated blind review in course-guides-qa.json.
 
-Validate with npm run typecheck, npm run build, and:
-node --experimental-strip-types --no-warnings --import ./scripts/ts-resolve.mjs scripts/test-garden.ts
+Whole-screen timing no longer grades English mastery: historical values included
+narration and listening. Guided key/word entry is recorded as hinted practice.
+Direct lesson URLs honour the same prerequisite locks as the map (author studio
+unlock remains available).
 
-Before expanding this pilot, observe a child doing all three missions without
-coaching. Check confusion, interest, audio clarity and whether the child can
-recognise the words later. The full old curriculum has not been rewritten;
-legacy timing/mastery rules remain specific to that separate course.
+QA:
+- scripts/test-combined-course.ts audits every static word/sentence build,
+  all eight matching boards, early review prerequisites, ambiguity rejection,
+  course reward deduplication and preserved legacy progress.
+- scripts/test-garden.ts covers storage validation, pilot compatibility, reward
+  limits, gift placement and retained helper functions.
+- npm run build includes TypeScript and production route generation.
+
+Human child observation is still needed to assess difficulty and engagement.

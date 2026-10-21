@@ -89,6 +89,7 @@ export type Step =
   | BuildSentenceStep
   | LetterSoundStep
   | LetterShapeStep
+  | LetterMatchStep
   | ChatStep;
 
 interface StepCommon {
@@ -99,6 +100,10 @@ interface StepCommon {
   promptEn?: string;
   /** Audio cue key, resolved by lib/audio.ts */
   say?: string;
+}
+export interface LetterMatchStep extends StepCommon {
+  type: "letter-match";
+  letters: string[];
 }
 
 export interface TutorialStep extends StepCommon {

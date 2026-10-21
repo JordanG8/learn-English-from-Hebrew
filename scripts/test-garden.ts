@@ -20,8 +20,9 @@ assert.equal(p.earned.length,9);
 for(const m of MISSIONS) p=completeMission(p,m.id);
 assert.equal(p.completed.length,3);
 for(const id of ["flowers","ball","house","kite"])p=claimGift(p,id);
-assert.equal(p.gifts.length,3,"cannot overspend reward entitlement");
-p=claimGift(p,"flowers");assert.equal(p.gifts.length,3);
+assert.equal(p.gifts.length,1,"cannot overspend reward entitlement");
+p=claimGift(p,"flowers");assert.equal(p.gifts.length,1);
+p = {...p, gifts:["flowers","ball","house"]}; // preserve previously earned pilot gifts
 p=placeGift(p,"flowers",0);p=placeGift(p,"ball",0);
 assert.deepEqual(p.placed,{ball:0},"replacement retains ownership but frees placement");
 p=placeGift(p,"house",3);assert.deepEqual(p.placed,{ball:0});

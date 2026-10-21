@@ -5390,6 +5390,27 @@
       "updatedAt": 1792588669445,
       "size": 47691,
       "durationMs": 5891
+    },
+    {
+      "id": "matching-instructions",
+      "url": "/voice/matching-instructions.mp3",
+      "updatedAt": 1792589748383,
+      "size": 96592,
+      "durationMs": 11993
+    },
+    {
+      "id": "pattern-instructions",
+      "url": "/voice/pattern-instructions.mp3",
+      "updatedAt": 1792589748981,
+      "size": 85934,
+      "durationMs": 10680
+    },
+    {
+      "id": "silent-letter-instructions",
+      "url": "/voice/silent-letter-instructions.mp3",
+      "updatedAt": 1792589752534,
+      "size": 48527,
+      "durationMs": 5989
     }
   ]
 }

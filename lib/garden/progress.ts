@@ -1,8 +1,20 @@
 import { GIFTS, MISSIONS, QUESTIONS } from "./curriculum";
 export const GARDEN_KEY = "efh:owl-garden:v1";
 export type Evidence = { lastDay: string; independentDays: string[]; attempts: number };
-export type GardenProgress = { version: 1; earned: string[]; completed: string[]; gifts: string[]; placed: Record<string, number>; evidence: Record<string, Evidence> };
-export const freshGarden = (): GardenProgress => ({ version: 1, earned: [], completed: [], gifts: [], placed: {}, evidence: {} });
+export type GardenProgress = { version: 1; earned: string[]; completed: string[]; gifts: string[]; placed: Record<string, number>; evidence: Record<string, Evidence>; courseImported: boolean };
+export const freshGarden = (): GardenProgress => ({ version: 1, earned: [], completed: [], gifts: [], placed: {}, evidence: {}, courseImported: false });
+export const GIFT_THRESHOLDS = [3,10,20,35,55,80];
+export const giftAllowance = (stars: number) => GIFT_THRESHOLDS.filter(n => stars >= n).length;
+const courseToken = (id: string) => /^(?:course|legacy):[a-zA-Z0-9_-]{1,100}:[a-zA-Z0-9_-]{1,150}$/.test(id);
+export function awardCourseAnswer(p: GardenProgress, lesson: string, step: string): GardenProgress {
+  const token=`course:${lesson}:${step}`;
+  return !courseToken(token) || p.earned.includes(token) ? p : {...p,earned:[...p.earned,token]};
+}
+export function importCourseStars(p: GardenProgress, stars: Record<string, number>): GardenProgress {
+  if(p.courseImported)return p;
+  const tokens=Object.entries(stars).flatMap(([id,n]) => Array.from({length:Math.min(3,Math.max(0,Math.floor(n)))},(_,i)=>`legacy:${id}:${i+1}`)).filter(courseToken);
+  return {...p,courseImported:true,earned:[...new Set([...p.earned,...tokens])]};
+}
 export function localDay(now = new Date()): string { return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`; }
 const ids = new Set(QUESTIONS.map(q => q.id));
 const strings = (value: unknown): string[] => Array.isArray(value) ? [...new Set(value.filter((v): v is string => typeof v === "string"))] : [];
@@ -10,9 +22,11 @@ export function coerceGarden(raw: unknown): GardenProgress {
   const p = freshGarden();
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return p;
   const r = raw as Record<string, unknown>;
-  p.earned = strings(r.earned).filter(id => ids.has(id) || /^review:\d{4}-\d{2}-\d{2}:/.test(id) && ids.has(id.split(":")[2]));
+  p.courseImported = r.courseImported === true;
+  p.earned = strings(r.earned).filter(id => courseToken(id) || ids.has(id) || /^review:\d{4}-\d{2}-\d{2}:/.test(id) && ids.has(id.split(":")[2]));
   p.completed = strings(r.completed).filter(id => MISSIONS.some(m => m.id === id && m.steps.filter(s => s.kind !== "teach").every(s => p.earned.includes(s.id))));
-  p.gifts = strings(r.gifts).filter(id => GIFTS.some(g => g.id === id)).slice(0, Math.floor(p.earned.length / 3));
+  // Preserve gifts already earned under the pilot's three-star thresholds.
+  p.gifts = strings(r.gifts).filter(id => GIFTS.some(g => g.id === id)).slice(0, Math.max(giftAllowance(p.earned.length), Math.floor(p.earned.length / 3)));
   if (r.placed && typeof r.placed === "object") for (const [id, slot] of Object.entries(r.placed)) {
     if (p.gifts.includes(id) && Number.isInteger(slot) && slot >= 0 && slot < 3 && !Object.values(p.placed).includes(slot)) p.placed[id] = slot;
   }
@@ -47,7 +61,7 @@ export function missionStartIndex(p: GardenProgress, missionIndex: number): numb
   return index;
 }
 export function claimGift(p: GardenProgress, id: string): GardenProgress {
-  if (!GIFTS.some(g => g.id === id) || p.gifts.includes(id) || p.gifts.length >= Math.floor(p.earned.length / 3)) return p;
+  if (!GIFTS.some(g => g.id === id) || p.gifts.includes(id) || p.gifts.length >= giftAllowance(p.earned.length)) return p;
   return { ...p, gifts: [...p.gifts, id] };
 }
 export function placeGift(p: GardenProgress, id: string, slot: number): GardenProgress {

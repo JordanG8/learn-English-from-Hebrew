@@ -84,9 +84,10 @@ import {
   getWord,
   spendWordFor,
 } from "./words";
-import { getSentence, sentencesOfTier, splitSentence, wordsHeFor } from "./sentences";
+import { getSentence, glossFor, sentencesOfTier, splitSentence, wordsHeFor } from "./sentences";
 import type { LetterData, SentenceData, WordData } from "./contract";
 import { letterPhoneme } from "../phonics";
+import { matchingStep } from "./matching";
 
 /* ------------------------------------------------------------------ */
 /* Small helpers                                                        */
@@ -472,6 +473,12 @@ function letterLesson(
     // its sound-out in front of it — that is what turns a drill into a payoff.
     steps.push(wordStep(spend, true, `-of-${d.letter}`));
   }
+  // The first linking exercise follows S, A, T, after all three introductions.
+  // Later groups practise already introduced letters rather than new symbols.
+  if (taught.length >= 3 && taught.length % 3 === 0) {
+    const match = matchingStep([...taught].reverse(), `match-${d.letter}`);
+    if (match) steps.push(match);
+  }
 
   return {
     id: `letter-${d.letter}`,
@@ -850,6 +857,15 @@ function introduceNewWords(lessons: readonly Lesson[]): Lesson[] {
     let changed = false;
     const steps: Step[] = [];
     for (const step of lesson.steps) {
+      if (step.type === "build-sentence") {
+        for (const word of splitSentence(step.sentence)) {
+          if (met.has(word)) continue;
+          met.add(word);
+          const data = getWord(word);
+          steps.push({ type: "word-intro", id: `sentence-word-${word}-${lesson.id}`, word, he: data?.he ?? glossFor(word), emoji: data?.emoji ?? step.emoji, promptHe: `נכיר מילה לפני המשפט: ${data?.he ?? glossFor(word)}` });
+          changed = true;
+        }
+      }
       if (step.type === "build-word" && !met.has(step.word)) {
         met.add(step.word);
         const data = getWord(step.word);
@@ -1016,8 +1032,13 @@ export function stepForSkill(skill: SkillId, seed = 0): Step | null {
 export function buildReviewLesson(
   skills: readonly SkillId[],
   id = "review-adhoc",
+  taught: readonly string[] = TEACHING_ORDER,
 ): Lesson {
-  const steps = skills
+  const allowed = skills.filter(skill => {
+    const match = /^letter-(?:name|sound|shape):([A-Z])$/.exec(skill);
+    return !match || taught.includes(match[1]);
+  });
+  const steps = allowed
     .map((s, i) => stepForSkill(s, i))
     .filter((s): s is Step => s !== null)
     .slice(0, MIXED_REVIEW_STEPS);
@@ -1025,11 +1046,13 @@ export function buildReviewLesson(
   const used = steps.length > 0 ? skills.slice(0, steps.length) : [];
 
   if (steps.length === 0) {
-    TEACHING_ORDER.slice(0, 4).forEach((letter, i) => {
+    taught.slice(0, 4).forEach((letter, i) => {
       const d = getLetter(letter);
       if (d) steps.push(soundStep(d, TEACHING_ORDER, i));
     });
   }
+  const match = matchingStep(taught, `match-${id}`, charSeed(id) % Math.max(1,taught.length));
+  if (match) steps.splice(0, Math.min(3,steps.length), match);
 
   return {
     id,
@@ -1082,6 +1105,8 @@ export function buildWarmupSteps(
  */
 export function skillsForStep(step: Step): SkillId[] {
   switch (step.type) {
+    case "letter-match":
+      return step.letters.flatMap(letter => [letterNameSkill(letter), letterSoundSkill(letter)]);
     case "letter-sound":
       return [
         step.mode === "sound"

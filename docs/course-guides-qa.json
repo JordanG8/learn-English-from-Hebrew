@@ -1,0 +1,38 @@
+{
+  "matching-instructions": {
+    "text": "מחברים כל אות לשם שלה, ואז את השם לצליל שלה. אפשר לגרור קו, או ללחוץ על שני קצוות. לחצו על רמקול כדי להקשיב.",
+    "model": "google/gemini-3.8-flash-tts",
+    "voice": "Kore",
+    "judge": "google/gemini-3.8-flash",
+    "take": 1,
+    "duration": 11.993356,
+    "transcript": "מחברים כל אות לשם שלה, ואז את השם לצליל שלה. אפשר לגרור קו, או ללחוץ על שני קצוות. לחצו על רמקול כדי להקשיב.",
+    "naturalness": 10,
+    "issue": "none",
+    "pass": true
+  },
+  "pattern-instructions": {
+    "text": "במילה הזאת יש אותיות שנשמעות אחרת, או מתחברות לצליל אחד. לחצו על כל חלק כדי לשמוע. אות שקטה לא משמיעה צליל.",
+    "model": "google/gemini-3.8-flash-tts",
+    "voice": "Kore",
+    "judge": "google/gemini-3.8-flash",
+    "take": 1,
+    "duration": 10.68,
+    "transcript": "במילה הזאת יש אותיות שנשמעות אחרת, או מתחברות לצליל אחד. לחצו על כל חלק כדי לשמוע. אות שקטה לא משמיעה צליל.",
+    "naturalness": 10,
+    "issue": "none",
+    "pass": true
+  },
+  "silent-letter-instructions": {
+    "text": "האות הזאת שקטה במילה הזאת. כותבים אותה, אבל לא משמיעים צליל משלה.",
+    "model": "google/gemini-3.8-flash-tts",
+    "voice": "Kore",
+    "judge": "google/gemini-3.8-flash",
+    "take": 1,
+    "duration": 5.988617,
+    "transcript": "האות הזאת שקטה במילה הזאת, כותבים אותה אבל לא משמיעים צליל משלה.",
+    "naturalness": 10,
+    "issue": "",
+    "pass": true
+  }
+}
