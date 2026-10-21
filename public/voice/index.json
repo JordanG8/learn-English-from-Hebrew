@@ -227,14 +227,14 @@
     },
     {
       "id": "narration-intro-A",
-      "url": "/voice/narration-intro-A.mp3",
-      "updatedAt": 1792106971318,
-      "size": 31808,
-      "durationMs": 3944,
+      "url": "/voice/narration-intro-A-corrected.mp3",
+      "updatedAt": 1792585571623,
+      "size": 32435,
+      "durationMs": 3982,
       "marks": [
         [
-          3390,
-          3852
+          3507,
+          3982
         ]
       ]
     },

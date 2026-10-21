@@ -264,3 +264,13 @@ a sentence the id is derived from the words themselves
 (`"I SEE A CAT"` → `sentence-i-see-a-cat`), so **editing the wording of a
 sentence orphans its recording too**. Adding a sentence is free; rewording one
 that has been recorded is not.
+
+### A introduction correction (2026-10-21)
+
+The combined A take pronounced the letter name as ah. Its replacement,
+`narration-intro-A-corrected.mp3`, retains the Hebrew carrier (0–0.85 s and
+1.3–3.39 s), inserts the standalone `letter-name-A` /eɪ/ clip, and ends with
+the same `phoneme-a` /æ/ clip used by the keyboard. The versioned URL and
+new manifest timestamp replace the old take in browser caches and the store
+merge. The earlier automated QA for the combined take missed the name error;
+its pass should not be treated as listening verification of this replacement.
