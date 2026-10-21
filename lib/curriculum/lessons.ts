@@ -134,7 +134,12 @@ export function soundStep(d: LetterData, taught: readonly string[], seed = 0): S
   const mine = letterPhoneme(d.letter);
   const seen = new Set([mine]);
   const others: string[] = [];
-  for (const l of distractorsFor(d.letter, taught, 25, true)) {
+  // A's visual confusables (E/O/C) are poor first listening choices:
+  // use a hiss, a hum, and a stop, clearly distinct from its short vowel.
+  const candidates = d.letter === "A"
+    ? ["S", "M", "T"]
+    : distractorsFor(d.letter, taught, 25, true);
+  for (const l of candidates) {
     const ph = letterPhoneme(l);
     if (!ph || seen.has(ph)) continue;
     seen.add(ph);
