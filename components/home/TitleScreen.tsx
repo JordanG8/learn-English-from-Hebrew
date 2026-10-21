@@ -21,6 +21,8 @@ import { useRouter } from "next/navigation";
 import { useProgress } from "@/lib/progress-context";
 import { useSound } from "@/lib/sound-pref";
 import { primeAudio, playSfx } from "@/lib/audio";
+import Link from "next/link";
+import { Owl } from "@/components/garden/Owl";
 
 export function TitleScreen() {
   const router = useRouter();
@@ -32,7 +34,7 @@ export function TitleScreen() {
   const go = () => {
     primeAudio();
     playSfx("tap");
-    router.push("/map");
+    router.push("/garden");
   };
 
   return (
@@ -56,11 +58,11 @@ export function TitleScreen() {
       {/* The mark: the letter the whole app is built around, standing on the
           page like the statue it becomes on the map. */}
       <div className="relative flex flex-1 flex-col items-center justify-center gap-2">
-        <div className="efh-mark ltr select-none" aria-hidden>
-          A
+        <div className="w-64 max-w-[60vw] select-none" aria-hidden>
+          <Owl />
         </div>
         <h1 className="text-center text-4xl font-black leading-tight">אנגלית מההתחלה</h1>
-        <p className="text-center text-xl text-ink-soft">אותיות, מקלדת, ודיבור</p>
+        <p className="text-center text-xl text-ink-soft">הרפתקאות באנגלית עם הינשוף שלנו</p>
       </div>
 
       {/* The bottom third: one action, thumb-height, impossible to miss. */}
@@ -73,8 +75,9 @@ export function TitleScreen() {
           <span aria-hidden className="text-5xl leading-none">
             {started ? "▶️" : "🚀"}
           </span>
-          <span>{started ? "ממשיכים" : "מתחילים"}</span>
+          <span>{started ? "אל הגינה" : "נכיר את הינשוף"}</span>
         </button>
+        <Link href="/map" className="min-h-12 p-3 text-lg underline">מסלול האותיות וההקלדה</Link>
         <p className="text-center text-sm text-ink-soft">
           <span className="ltr">Jordan Goren</span> · <span className="ltr">Claude</span>
         </p>

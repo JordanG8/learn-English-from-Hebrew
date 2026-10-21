@@ -518,18 +518,18 @@ async function playUrl(
 }
 
 /** Speak an English string and resolve when the synthesiser is done. */
-function speakEnAndWait(text: string, rate: number, ticket: number): Promise<PlayOutcome> {
+function speakEnAndWait(text: string, rate: number, ticket: number, lang = "en-US"): Promise<PlayOutcome> {
   return new Promise((resolve) => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window) || !enVoice()) {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       resolve("failed");
       return;
     }
     try {
-      const v = enVoice()!;
+      const v = lang.startsWith("en") ? enVoice() : window.speechSynthesis.getVoices().find(v => v.lang.toLowerCase().startsWith(lang.slice(0,2)));
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
-      u.voice = v;
-      u.lang = v.lang;
+      if (v) u.voice = v;
+      u.lang = v?.lang ?? lang;
       u.rate = rate;
       u.pitch = 1.05;
       // Some engines never fire onend; never let a sequence hang on one.
@@ -549,7 +549,7 @@ function speakEnAndWait(text: string, rate: number, ticket: number): Promise<Pla
   });
 }
 
-type Fallback = { text: string; rate?: number } | null | undefined;
+type Fallback = { text: string; rate?: number; lang?: string } | null | undefined;
 
 /** The recorded clip if there is one, else the synthesiser, else nothing. */
 async function speakOne(
@@ -571,7 +571,7 @@ async function speakOne(
   if (ticket !== speechTicket) return "stopped";
   if (!fallback || muted) return "failed";
   onStart?.(performance.now());
-  return speakEnAndWait(fallback.text, fallback.rate ?? 0.75, ticket);
+  return speakEnAndWait(fallback.text, fallback.rate ?? 0.75, ticket, fallback.lang);
 }
 
 /** Fire and forget: say this line now, cutting off whatever was speaking. */

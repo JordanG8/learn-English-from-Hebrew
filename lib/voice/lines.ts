@@ -37,8 +37,10 @@ import { WORDS } from "@/lib/curriculum/words";
 import { SENTENCES } from "@/lib/curriculum/sentences";
 import { LESSONS, TUTORIAL_LESSON } from "@/lib/curriculum/lessons";
 import type { TutorialStep } from "@/lib/types";
+import { MISSIONS } from "@/lib/garden/curriculum";
 
 export type VoiceGroupId =
+  | "garden"
   | "narration"
   | "letter-intro"
   | "letter-name"
@@ -295,6 +297,10 @@ function sentenceLines(): VoiceLine[] {
 }
 
 export const VOICE_GROUPS: readonly VoiceGroup[] = [
+  {
+    id: "garden", titleHe: "הגינה של הינשוף", blurbHe: "הוראות בעברית לשלוש ההרפתקאות הראשונות.",
+    lines: MISSIONS.flatMap(m => m.steps).map((step, order) => ({ id: `garden-${step.id}`, group: "garden" as const, lang: "he" as const, text: step.instruction, directionHe: "קראו רק את ההוראה, בנחת ובבהירות.", fallback: null, order })),
+  },
   {
     id: "narration",
     titleHe: "ההדרכה",
