@@ -229,7 +229,6 @@ A pass means a listener who was NOT told the script heard the right thing. That 
 | ✅ | `soundout-PAN` | 4 | `[slowly, warmly, like a kind teacher sounding out a word for a young child] Puh — <phoneme alphabet="ipa" ph="æ">a</phoneme> — Nnnnn. Puh — <phoneme alphabet="ipa" ph="æ">a</phoneme> — Nnnnn. Pan!` | heard pə·æ·n·pə·æ·n → "pan" · quality 8 |
 | ✅ | `soundout-PHONE` | 2 | `[slowly, warmly, like a kind teacher sounding out a word for a young child] Fffff — oh — Nnnnn. Fffff — oh — Nnnnn. Phone!` | heard f·oʊ·n·f·oʊ·n → "phone" · quality 9 |
 | ✅ | `soundout-PIG` | 8 | `[slowly, warmly, like a kind teacher sounding out a word for a young child] Puh — ih — guh. Puh — ih — guh. Pig!` | heard pə·ɪ·ɡə·pə·ɪ·ɡə → "pig" · quality 7 |
-| ✅ | `soundout-PIN` | 1 | `[slowly, warmly, like a kind teacher sounding out a word for a young child] Puh — ih — Nnnnn. Puh — ih — Nnnnn. Pin!` | heard pə·ɪ·n·pə·ɪ·n → "pin" · quality 8 |
 | ✅ | `soundout-PIZZA` | 3 | `[slowly, warmly, like a kind teacher sounding out a word for a young child] Puh — ee — tss — uhh. Puh — ee — tss — uhh. Pizza!` | heard p·iː·ts·ə·p·iː·ts·ə → "pizza" · quality 8 · by gemini-3.8-flash |
 | ✅ | `soundout-PLANE` | 1 | `[slowly, warmly, like a kind teacher sounding out a word for a young child] Puh — Lllll — ay — Nnnnn. Puh — Lllll — ay — Nnnnn. Plane!` | heard pə·əl·eɪ·n·pə·əl·eɪ·n → "plane" · quality 7 |
 | ✅ | `soundout-QUEEN` | 1 | `[slowly, warmly, like a kind teacher sounding out a word for a young child] Kwuh — ee — Nnnnn. Kwuh — ee — Nnnnn. Queen!` | heard kwə·iː·n·kwə·iː·n → "queen" · quality 8 |
@@ -317,7 +316,6 @@ A pass means a listener who was NOT told the script heard the right thing. That 
 | ✅ | `word-PAN` | 1 | `[warmly, clearly, to a child] pan` | heard "pan" · quality 9 · by gemini-3.8-flash |
 | ✅ | `word-PHONE` | 1 | `[warmly, clearly, to a child] phone` | heard "phone" · quality 9 · by gemini-3.8-flash |
 | ✅ | `word-PIG` | 1 | `[warmly, clearly, to a child] pig` | heard "pig" · quality 9 · by gemini-3.8-flash |
-| ✅ | `word-PIN` | 1 | `[warmly, clearly, to a child] pin` | heard "pin" · quality 9 · by gemini-3.8-flash |
 | ✅ | `word-PIZZA` | 1 | `[warmly, clearly, to a child] pizza` | heard "pizza" · quality 7 |
 | ✅ | `word-PLANE` | 1 | `[warmly, clearly, to a child] plane` | heard "plane" · quality 7 |
 | ✅ | `word-QUEEN` | 1 | `[warmly, clearly, to a child] queen` | heard "queen" · quality 7 |

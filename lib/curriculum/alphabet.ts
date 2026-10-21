@@ -194,7 +194,7 @@ export const LETTERS: readonly LetterData[] = [
  * single word, which breaks the one rule this app has: nothing is learned in
  * a vacuum. This order is the standard synthetic-phonics sequence (Letters
  * and Sounds phase 2: s a t p i n, then m d g o c k), chosen because the
- * first six letters already spell SIT, PIN, TAP, NAP, PIT and ANT — a child
+ * first six letters already spell SIT, PAN, TAP, NAP and ANT — a child
  * builds a real word in lesson six, not lesson twenty-six.
  *
  * The alphabet song order is still taught, but as its own thing, later.

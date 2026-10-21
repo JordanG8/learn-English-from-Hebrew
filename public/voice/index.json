@@ -3469,43 +3469,6 @@
       ]
     },
     {
-      "id": "soundout-PIN",
-      "url": "/voice/soundout-PIN.mp3",
-      "updatedAt": 1792104262738,
-      "size": 67126,
-      "durationMs": 8359,
-      "marks": [
-        [
-          30,
-          460
-        ],
-        [
-          1060,
-          1440
-        ],
-        [
-          2040,
-          2870
-        ],
-        [
-          3970,
-          4330
-        ],
-        [
-          4930,
-          5240
-        ],
-        [
-          5840,
-          6630
-        ],
-        [
-          7730,
-          8269
-        ]
-      ]
-    },
-    {
       "id": "soundout-PIZZA",
       "url": "/voice/soundout-PIZZA.mp3",
       "updatedAt": 1792104262738,
@@ -4937,13 +4900,6 @@
       "updatedAt": 1792104262782,
       "size": 6522,
       "durationMs": 784
-    },
-    {
-      "id": "word-PIN",
-      "url": "/voice/word-PIN.mp3",
-      "updatedAt": 1792104262782,
-      "size": 6731,
-      "durationMs": 810
     },
     {
       "id": "word-PIZZA",

@@ -116,7 +116,7 @@ export const PHONEMES: Readonly<Record<PhonemeId, Phoneme>> = {
   l: P("l", "l", "l", "lion"),
   m: P("m", "m", "bmp", "moon"),
   n: P("n", "n", "cdnstxyz", "nose"),
-  p: P("p", "p", "bmp", "pin"),
+  p: P("p", "p", "bmp", "pan"),
   // The English R is the one Hebrew speakers get wrong most persistently (a
   // uvular ר). Its mouth is the rounded one on purpose: "round lips, not the
   // back of the throat" is the correction, and the picture says it.
@@ -187,7 +187,6 @@ export interface Segment {
 const TABLE: Record<string, string> = {
   /* built words ---------------------------------------------------- */
   SIT: "s:s i:i t:t",
-  PIN: "p:p i:i n:n",
   ANT: "a:a n:n t:t",
   MAP: "m:m a:a p:p",
   PAN: "p:p a:a n:n",
