@@ -576,10 +576,15 @@ extra lesson in.
 
 ### Adding a spoken line
 
-You do not. `lib/voice/lines.ts` derives the catalogue from the curriculum, so
-a new letter or word appears in `/studio` unrecorded, using TTS, until someone
-records it. See `docs/voice.md`. The one hard rule: a voice-line id IS the
-stored filename, so renaming an id orphans its recording.
+You do not write one. `lib/voice/lines.ts` derives the catalogue from the
+curriculum (and from `lib/phonics.ts`), so a new letter or word gets its lines
+automatically — and until they exist the app falls back to TTS, or for a word's
+sound-out, to the separate sound clips. To voice them, run the generator for
+just the new ids (`scripts/generate-voice.ts --only '…'`) and commit
+`public/voice/`; see `docs/voice.md`. A new BUILT word also needs a line in the
+segmentation table in `lib/phonics.ts` — the table fails loudly at load if its
+spelling and its pieces disagree. The one hard rule: a voice-line id IS the
+stored filename, so renaming an id orphans its clip.
 
 ### Adding a Step *type*
 
@@ -599,6 +604,10 @@ stored filename, so renaming an id orphans its recording.
    child is still filling in.
 
 `build-sentence` is the worked example of all six — it was added this way.
+`letter-intro` and `word-intro` are the worked example of an UNGRADED step:
+they return no skills, call `onAdvance` from their own button, and are put in
+the track by the builders (`letterLesson`, and `introduceNewWords`, which puts
+a word's sound-out in front of the first lesson that asks for it).
 
 ### How a mixed review actually works
 

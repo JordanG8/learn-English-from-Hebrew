@@ -48,17 +48,20 @@ conversation mode.
 
 ## The app's voice
 
-Everything spoken — letter names, letter sounds, words, sentences, and the
-first-visit walkthrough — plays a **recorded human voice** when one exists.
-Recording happens at `/studio`, from a phone, and a line is audible in the app
-seconds later with no deploy.
+Everything spoken — Hebrew narration, letter names, letter sounds, words,
+sentences, and the sound-out that introduces every new word — is one generated
+voice (ElevenLabs v4 via OpenRouter), made and checked by
+`scripts/generate-voice.ts` and committed under `public/voice/`. Each take is
+transcribed blind by a second model and kept only if it says what it should;
+`docs/voice-qa.md` lists what was heard for every clip. A line can still be
+re-recorded by hand at `/studio`. See `docs/voice.md`.
 
-A line nobody has recorded is spoken by a **speech model** through the Vercel
-AI Gateway, generated once and cached, and only then by the browser's own
-robotic voice. The 50 sentences of levels 76–100 are the whole of that second
-category today: nobody has recorded them yet, so they are the first lines a
-child actually hears in the model's voice rather than the browser's. See
-`docs/voice.md`.
+## Phonics
+
+`lib/phonics.ts` is the one table of what every word sounds like, piece by
+piece (CAKE is k·ay·k with a silent E), and which of the twelve mouth shapes in
+`public/mouths/` makes each sound. The word intro, the sound of every
+keypress, and the mouth pictures all read from it, so they can never disagree.
 
 ## Saying it back
 

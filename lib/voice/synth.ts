@@ -57,7 +57,7 @@
  * same thing to a child: this line uses the browser voice today.
  */
 
-import { getLetter } from "@/lib/curriculum/alphabet";
+import { PHONEMES, type PhonemeId } from "@/lib/phonics";
 import { credentialKind, gatewayCredential, gatewayHeaders, GATEWAY_BASE } from "./gateway";
 import { getVoiceLine, type VoiceLine } from "./lines";
 
@@ -219,14 +219,15 @@ export function directionFor(line: VoiceLine): Direction {
           `when you recite the alphabet — once, and nothing else. ${CHILD}`,
       };
     }
-    case "letter-sound": {
-      const letter = line.id.slice("letter-sound-".length);
-      const ipa = getLetter(letter)?.ipa ?? "";
+    case "phoneme": {
+      const letter = line.id.slice("phoneme-".length);
+      const phoneme = PHONEMES[letter as PhonemeId];
+      const ipa = phoneme?.ipa ?? line.text;
       return {
         // "buh" is a crude spelling of a phoneme, written for a browser voice
         // that had no other way in. The instructions below are the real
         // input; the text is the pronunciation hint.
-        text: line.text,
+        text: ipa,
         language: "en",
         speed: 0.85,
         // Written for a steerable model, and true whether or not the model
@@ -262,6 +263,9 @@ export function directionFor(line: VoiceLine): Direction {
           `Say the single English word "${line.text}" once, at a natural ` +
           `pace — clear, but not over-enunciated or drawn out. ${CHILD}`,
       };
+    case "soundout":
+      return { text: line.text, language: "en", speed: 0.85,
+        instructions: `Sound out the word in separate phonemes, with short pauses. ${CHILD}` };
     case "narration":
     case "lesson-card":
     default:

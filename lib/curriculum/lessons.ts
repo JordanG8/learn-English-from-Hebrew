@@ -71,15 +71,23 @@ import {
   wordSkill,
 } from "../skills";
 import { TOUR } from "../tour";
-import { LETTERS, TEACHING_ORDER, distractorsFor, getLetter } from "./alphabet";
+import {
+  LETTERS,
+  TEACHING_ORDER,
+  distractorsFor,
+  getLetter,
+  letterIntroText,
+} from "./alphabet";
 import {
   WORDS_BY_DIFFICULTY,
   buildableWords,
   getWord,
   spendWordFor,
 } from "./words";
-import { getSentence, sentencesOfTier, splitSentence, wordsHeFor } from "./sentences";
+import { getSentence, glossFor, sentencesOfTier, splitSentence, wordsHeFor } from "./sentences";
 import type { LetterData, SentenceData, WordData } from "./contract";
+import { letterPhoneme } from "../phonics";
+import { matchingStep } from "./matching";
 
 /* ------------------------------------------------------------------ */
 /* Small helpers                                                        */
@@ -117,17 +125,44 @@ function ramp(position: number, length: number, lo: number, hi: number): number 
 /* Step builders — one per Step variant                                 */
 /* ------------------------------------------------------------------ */
 
-export function soundStep(d: LetterData, taught: readonly string[], seed = 0): Step {
-  const others = distractorsFor(d.letter, taught, 3, true)
-    .map((l) => getLetter(l)?.soundHe)
-    .filter((x): x is string => typeof x === "string" && x !== d.soundHe);
-  const options = shuffle([d.soundHe, ...others.slice(0, 3)], charSeed(d.letter) + seed);
+// Listening choices need acoustic contrast, not the visual confusables used
+// by shape exercises. Take one representative from each other sound family:
+// never M against N, several vowels, voiced/unvoiced pairs, or C against K.
+const SOUND_FAMILIES = [
+  { letters: "AEIOU", choice: "A" },
+  { letters: "FHSVXZ", choice: "S" },
+  { letters: "MN", choice: "M" },
+  { letters: "BCDGJKPQT", choice: "T" },
+  { letters: "LRWY", choice: "L" },
+] as const;
+
+export function soundStep(d: LetterData, _taught: readonly string[], seed = 0): Step {
+  /*
+   * The options are LETTERS, and the child chooses between the sounds they
+   * make — tapping a speaker hears it, and nothing is graded until they press
+   * the button under the four. Two letters that make the same sound (C and K)
+   * can never both be offered: the question would have two right answers.
+   */
+  const mine = letterPhoneme(d.letter);
+  const seen = new Set([mine]);
+  const others: string[] = [];
+  const candidates = SOUND_FAMILIES
+    .filter((family) => !family.letters.includes(d.letter.toUpperCase()))
+    .map((family) => family.choice);
+  for (const l of candidates) {
+    const ph = letterPhoneme(l);
+    if (!ph || seen.has(ph)) continue;
+    seen.add(ph);
+    others.push(l.toUpperCase());
+    if (others.length === 3) break;
+  }
+  const options = shuffle([d.letter, ...others], charSeed(d.letter) + seed);
   return {
     id: `sound-${d.letter}-${seed}`,
     type: "letter-sound",
     mode: "sound",
     letter: d.letter,
-    answer: d.soundHe,
+    answer: d.letter,
     options,
     promptHe: `איזה צליל עושה האות ${d.letter}?`,
     say: `letter-sound:${d.letter}`,
@@ -413,13 +448,13 @@ function letterLesson(
   spend: WordData | undefined,
 ): Lesson {
   const steps: Step[] = [
-    // 1. meet it — a full-screen card, no question yet
+    // 1. meet it — the letter, its mouth, and one sentence that ends on its
+    // sound. No explanation: hearing it is the explanation.
     {
       id: `intro-${d.letter}`,
-      type: "tutorial",
-      target: null,
-      advanceOn: "next-button",
-      promptHe: `זאת האות ${d.letter}. היא עושה את הצליל "${d.soundHe}" — כמו ב־${d.exampleWord} (${d.exampleWordHe}) ${d.emoji}`,
+      type: "letter-intro",
+      letter: d.letter,
+      promptHe: letterIntroText(d.nameHe).replace("…", ` ${d.soundHe}`),
       say: `letter-sound:${d.letter}`,
     },
     // 2. sound  3. name  — phonics before orthography
@@ -434,17 +469,15 @@ function letterLesson(
   ];
 
   if (spend) {
-    // 6. spend it. The card is what turns a drill into a payoff — it names
-    // the word the child is about to earn before the keyboard appears.
-    steps.push({
-      id: `spend-intro-${d.letter}`,
-      type: "tutorial",
-      target: null,
-      advanceOn: "next-button",
-      promptHe: `עכשיו בונים מילה אמיתית עם ${d.letter}: ${spend.he} ${spend.emoji}`,
-      say: `word:${spend.word}`,
-    });
+    // 6. spend it. When the word is new to the track, introduceNewWords puts
+    // its sound-out in front of it — that is what turns a drill into a payoff.
     steps.push(wordStep(spend, true, `-of-${d.letter}`));
+  }
+  // The first linking exercise follows S, A, T, after all three introductions.
+  // Later groups practise already introduced letters rather than new symbols.
+  if (taught.length === 2 || (taught.length >= 3 && taught.length % 3 === 0)) {
+    const match = matchingStep([...taught].reverse(), `match-${d.letter}`);
+    if (match) steps.push(match);
   }
 
   return {
@@ -796,8 +829,63 @@ function sentencePhase(): Lesson[] {
 /* The track                                                            */
 /* ------------------------------------------------------------------ */
 
+/** The sound-out a word gets the first time it appears. */
+export function wordIntroStep(word: WordData, suffix = ""): Step {
+  return {
+    id: `word-intro-${word.word}${suffix}`,
+    type: "word-intro",
+    word: word.word,
+    he: word.he,
+    emoji: word.emoji,
+    promptHe: `מילה חדשה: ${word.he}`,
+    say: `word:${word.word}`,
+  };
+}
+
+/**
+ * NEW WORDS ARE HEARD BEFORE THEY ARE TYPED.
+ *
+ * Walks the finished track in order, and the first time any lesson asks for a
+ * word to be built, the word's sound-out goes immediately in front of it. A
+ * word met again later is not re-introduced — by then it is the child's — and
+ * review lessons, which are assembled at play time, only ever revisit words
+ * the track has already introduced.
+ */
+function introduceNewWords(lessons: readonly Lesson[]): Lesson[] {
+  const met = new Set<string>();
+  return lessons.map((lesson) => {
+    let changed = false;
+    const steps: Step[] = [];
+    for (const step of lesson.steps) {
+      if (step.type === "build-sentence") {
+        for (const word of splitSentence(step.sentence)) {
+          if (met.has(word)) continue;
+          met.add(word);
+          const data = getWord(word);
+          steps.push({ type: "word-intro", id: `sentence-word-${word}-${lesson.id}`, word, he: data?.he ?? glossFor(word), emoji: data?.emoji ?? step.emoji, promptHe: `נכיר מילה לפני המשפט: ${data?.he ?? glossFor(word)}` });
+          changed = true;
+        }
+      }
+      if (step.type === "build-word" && !met.has(step.word)) {
+        met.add(step.word);
+        const data = getWord(step.word);
+        if (data) {
+          steps.push(wordIntroStep(data, `-${lesson.id}`));
+          changed = true;
+        }
+      }
+      steps.push(step);
+    }
+    return changed ? { ...lesson, steps } : lesson;
+  });
+}
+
 function buildTrack(): Lesson[] {
-  const phases = [...alphabetPhase(), ...wordPhase(), ...sentencePhase()];
+  const phases = introduceNewWords([
+    ...alphabetPhase(),
+    ...wordPhase(),
+    ...sentencePhase(),
+  ]);
 
   // Thread `order` and the linear `requires` chain through in one pass, so no
   // builder above has to know where in the track it ended up.
@@ -944,8 +1032,13 @@ export function stepForSkill(skill: SkillId, seed = 0): Step | null {
 export function buildReviewLesson(
   skills: readonly SkillId[],
   id = "review-adhoc",
+  taught: readonly string[] = TEACHING_ORDER,
 ): Lesson {
-  const steps = skills
+  const allowed = skills.filter(skill => {
+    const match = /^letter-(?:name|sound|shape):([A-Z])$/.exec(skill);
+    return !match || taught.includes(match[1]);
+  });
+  const steps = allowed
     .map((s, i) => stepForSkill(s, i))
     .filter((s): s is Step => s !== null)
     .slice(0, MIXED_REVIEW_STEPS);
@@ -953,11 +1046,13 @@ export function buildReviewLesson(
   const used = steps.length > 0 ? skills.slice(0, steps.length) : [];
 
   if (steps.length === 0) {
-    TEACHING_ORDER.slice(0, 4).forEach((letter, i) => {
+    taught.slice(0, 4).forEach((letter, i) => {
       const d = getLetter(letter);
       if (d) steps.push(soundStep(d, TEACHING_ORDER, i));
     });
   }
+  const match = matchingStep(taught, `match-${id}`, charSeed(id) % Math.max(1,taught.length));
+  if (match) steps.splice(0, Math.min(match.letters.length,steps.length), match);
 
   return {
     id,
@@ -1010,6 +1105,8 @@ export function buildWarmupSteps(
  */
 export function skillsForStep(step: Step): SkillId[] {
   switch (step.type) {
+    case "letter-match":
+      return step.letters.flatMap(letter => [letterNameSkill(letter), letterSoundSkill(letter)]);
     case "letter-sound":
       return [
         step.mode === "sound"
@@ -1037,6 +1134,8 @@ export function skillsForStep(step: Step): SkillId[] {
         ...uniqueKeySkills(step.sentence),
       ];
     case "tutorial":
+    case "letter-intro":
+    case "word-intro":
     case "chat":
       return [];
     default:

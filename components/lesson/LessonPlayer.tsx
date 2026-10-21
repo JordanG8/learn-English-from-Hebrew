@@ -29,6 +29,11 @@
  */
 
 import { tintStyle } from "@/lib/palette";
+// Owl rewards paused: import { useGarden } from "@/lib/garden/use-garden";
+// Owl rewards paused: import { awardCourseAnswer, importCourseStars, GIFT_THRESHOLDS } from "@/lib/garden/progress";
+import { introducedLetters } from "@/lib/curriculum/matching";
+import { LetterMatchView } from "./LetterMatchView";
+import { useStudioUnlock } from "@/lib/studio-unlock";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Lesson, Step } from "@/lib/types";
@@ -38,11 +43,20 @@ import {
   CELEBRATION_MS,
 } from "@/lib/pedagogy";
 import { useProgress } from "@/lib/progress-context";
-import { planMixedReview } from "@/lib/srs";
+import { isLessonUnlocked, planMixedReview } from "@/lib/srs";
 import { buildReviewLesson, buildWarmupSteps, skillsForStep } from "@/lib/curriculum";
 import { starsFor, completionHeadlineHe } from "@/lib/reward";
 import type { Stars } from "@/lib/reward";
-import { playSfx } from "@/lib/audio";
+import { playSfx, preloadLines } from "@/lib/audio";
+import { ALL_MOUTHS, PHONEME_IDS, mouthSrc } from "@/lib/phonics";
+import {
+  letterIntroLineId,
+  phonemeLineId,
+  sentenceLineId,
+  soundoutLineId,
+  soundQuestionLineId,
+  wordLineId,
+} from "@/lib/voice/lines";
 import { clearResume, readResume, writeResume } from "@/lib/lesson-resume";
 import {
   BigButton,
@@ -55,10 +69,12 @@ import {
 import {
   BuildSentenceView,
   BuildWordView,
+  LetterIntroView,
   LetterShapeView,
   LetterSoundView,
   PressKeyView,
   TutorialCardView,
+  WordIntroView,
   type StepRenderProps,
 } from "./steps";
 
@@ -67,6 +83,10 @@ type Phase = "playing" | "feedback" | "done";
 export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
   const router = useRouter();
   const { progress, ready, attempt, completeLesson, learnWord } = useProgress();
+// Owl rewards paused:   const garden = useGarden();
+  const unlockAll = useStudioUnlock();
+// Owl rewards paused:   const award = garden.update;
+// Owl rewards paused:   useEffect(() => { if (ready && garden.ready && !garden.progress.courseImported) award(p => importCourseStars(p,progress.stars)); }, [ready,garden.ready,garden.progress.courseImported,progress.stars,award]);
 
   /* --- Run state --------------------------------------------------- */
   const [index, setIndex] = useState(0);
@@ -101,7 +121,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
       return;
     }
     if (stored.kind === "mixed") {
-      setResolved(buildReviewLesson(planMixedReview(progress), stored.id));
+      setResolved(buildReviewLesson(planMixedReview(progress), stored.id, introducedLetters(progress)));
       return;
     }
     const warmup = stored.warmup ?? 0;
@@ -129,6 +149,33 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
   const lesson = resolved;
   const steps: Step[] = useMemo(() => lesson?.steps ?? [], [lesson]);
 
+  /*
+   * WARM THE VOICE before it is needed. Every keypress plays a sound, and the
+   * first one of a lesson should land as fast as the hundredth — so every
+   * sound clip (they are tiny), and every line this lesson will say, is
+   * fetched and decoded the moment it opens. The twelve mouths too, so a
+   * mouth swapped mid-word is already in memory.
+   */
+  useEffect(() => {
+    if (!lesson) return;
+    const ids = new Set<string>(PHONEME_IDS.map(phonemeLineId));
+    for (const s of lesson.steps) {
+      if (s.type === "letter-intro") ids.add(letterIntroLineId(s.letter));
+      if (s.type === "letter-sound" && s.mode === "sound") ids.add(soundQuestionLineId(s.letter));
+      if (s.type === "word-intro") {
+        ids.add(soundoutLineId(s.word));
+        ids.add(wordLineId(s.word));
+      }
+      if (s.type === "build-word") ids.add(wordLineId(s.word));
+      if (s.type === "build-sentence") ids.add(sentenceLineId(s.sentence));
+    }
+    preloadLines([...ids]);
+    for (const m of ALL_MOUTHS) {
+      const img = new Image();
+      img.src = mouthSrc(m);
+    }
+  }, [lesson]);
+
   const step = steps[index];
   const forceHint = attemptsHere >= HINT_RESCUE_AFTER_WRONG;
 
@@ -144,17 +191,18 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
     (correct: boolean) => {
       if (!step || phase !== "playing") return;
       const skills = skillsForStep(step);
-      const hinted = forceHint || attemptsHere > 0;
+      const hinted = forceHint || attemptsHere > 0 || ("hint" in step && step.hint === true);
       // Only the FIRST attempt on a step is a fair latency sample; later ones
       // include the time spent reading the "try again" nudge.
-      const latencyMs = attemptsHere === 0 ? Date.now() - shownAt.current : undefined;
-
-      skills.forEach((s) => attempt(s, { correct, hinted, latencyMs }));
+      // Listening and exploration are learning, not response latency. Do not
+      // grade whole-screen time as automaticity, or guided typing as recall.
+      if (step.type !== "letter-match" || correct) skills.forEach((s) => attempt(s, { correct, hinted }));
 
       if (correct) {
+// Owl rewards paused:         award(p => awardCourseAnswer(p, stored.id, step.id));
         // build-word and build-sentence own their own pacing: they show the
         // hero celebration and call onAdvance themselves.
-        if (step.type === "build-word" || step.type === "build-sentence") return;
+        if (step.type === "build-word" || step.type === "build-sentence" || step.type === "letter-match") return;
         setPhase("feedback");
         window.setTimeout(advance, 650);
         return;
@@ -167,6 +215,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
         attemptsHere + 1 >= MAX_ATTEMPTS_PER_STEP &&
         step.type !== "build-word" &&
         step.type !== "build-sentence"
+        && step.type !== "letter-match"
       ) {
         // Never leave a child stuck in a failure loop. Move on and let the
         // SRS bring this skill back later.
@@ -174,7 +223,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
         window.setTimeout(advance, 1600);
       }
     },
-    [step, phase, forceHint, attemptsHere, attempt, index, advance],
+    [step, phase, forceHint, attemptsHere, attempt, index, advance,stored.id],
   );
 
   /* --- Completion --------------------------------------------------- */
@@ -263,6 +312,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
       </main>
     );
   }
+  if (!unlockAll && !isLessonUnlocked(progress,stored)) return <main className="grid min-h-dvh place-items-center p-6"><div className="text-center"><h1 className="mb-4 text-2xl font-bold">קודם נכיר את האותיות והצלילים שבדרך</h1><BigButton onClick={() => router.push("/map")}>אל השלב שלי במסלול</BigButton></div></main>;
 
   if (phase === "done") {
     return (
@@ -280,6 +330,7 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
           <SecondaryButton icon="🔁" onClick={restart} className="w-full">
             עוד פעם
           </SecondaryButton>
+          {/* Owl rewards paused for now. <SecondaryButton icon="🦉" onClick={() => router.push("/garden")} className="w-full">הינשוף והפרסים שלי · {garden.progress.earned.length} ⭐</SecondaryButton> */}
           <SecondaryButton icon="🏠" onClick={() => router.push("/")} className="w-full">
             בית
           </SecondaryButton>
@@ -314,10 +365,17 @@ export function LessonPlayer({ lesson: stored }: { lesson: Lesson }) {
       <ScreenHeader title={lesson.titleHe} onBack={() => router.push("/map")} />
       <div className="px-4">
         <StepBar current={index} total={steps.length} />
+        {/* Owl rewards paused for now. <p className="mt-2 text-center text-sm text-ink-soft" aria-live="polite">🦉 {garden.progress.earned.length} כוכבי גינה{GIFT_THRESHOLDS[garden.progress.gifts.length] ? ` · עוד ${Math.max(0,GIFT_THRESHOLDS[garden.progress.gifts.length]-garden.progress.earned.length)} למתנה` : ""}</p> */}
       </div>
 
       <div className="flex flex-1 flex-col gap-4 p-4 [@media(max-height:560px)]:gap-2 [@media(max-height:560px)]:p-2">
-        {step.type === "letter-sound" ? (
+        {step.type === "letter-match" ? (
+          <LetterMatchView key={step.id} step={step} {...common} />
+        ) : step.type === "letter-intro" ? (
+          <LetterIntroView step={step} {...common} />
+        ) : step.type === "word-intro" ? (
+          <WordIntroView step={step} {...common} />
+        ) : step.type === "letter-sound" ? (
           <LetterSoundView step={step} {...common} />
         ) : step.type === "letter-shape" ? (
           <LetterShapeView step={step} {...common} />

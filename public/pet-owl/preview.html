@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Your owl’s garden · Animation preview</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#faf5e9;color:#493b32;font-family:system-ui,sans-serif}main{max-width:1100px;margin:24px auto;padding:0 16px}h1{font-size:clamp(22px,4vw,32px);margin:0 0 6px}p{margin:0 0 18px;color:#746655}.garden{position:relative;aspect-ratio:3/2;background:url('garden.png') center/cover;border-radius:26px;overflow:hidden;box-shadow:0 12px 38px #4d422322}.pet{position:absolute;width:26%;aspect-ratio:1;left:37%;top:46%;filter:drop-shadow(0 12px 7px #775b292b)}.owl{width:100%;height:100%}.owl svg{display:block;width:100%;height:100%}nav{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin:18px 0}button{min-height:48px;padding:10px 20px;border:2px solid #ddcda8;border-radius:18px;background:#fffdf5;color:#493b32;font:inherit;font-weight:650;cursor:pointer}button[aria-pressed=true]{background:#76599a;color:white;border-color:#76599a}button:focus-visible{outline:3px solid #32706a;outline-offset:3px}.note{text-align:center;font-size:14px}@media(prefers-reduced-motion:reduce){.owl{animation:none!important}}
+</style></head><body><main><h1>Your owl’s garden</h1><p>A little home that can grow with every learning adventure.</p><div class="garden" role="img" aria-label="A cozy walled garden with a flowering tree house and a friendly golden owl"><div class="pet"><div class="owl" data-state="idle"></div></div></div><nav aria-label="Preview owl animations"><button data-state="idle" aria-pressed="true">Blink & breathe</button><button data-state="celebrate" aria-pressed="false">Celebrate</button><button data-state="hop" aria-pressed="false">Happy hop</button><button data-state="sleep" aria-pressed="false">Sleep</button><button id="pause" aria-pressed="false">Pause</button></nav><p class="note">Animation preview · Garden decorations and earned rewards will use this space.</p></main><script>
+// Measured artwork bounds, rather than an assumed equal grid. Each viewBox
+// isolates its frame; a common foot baseline prevents accidental bobbing.
+const frames={
+ idle:[[54,29,274,294],[363,25,584,294],[674,26,895,294],[984,26,1203,294]],
+ celebrate:[[27,339,300,605],[324,340,622,599],[635,343,948,601],[985,339,1204,605]],
+ hop:[[56,689,275,916],[331,644,623,888],[635,632,942,871],[982,688,1203,916]],
+ sleep:[[54,960,274,1225],[365,953,587,1225],[673,960,896,1225],[983,960,1204,1225]]
+};
+const owl=document.querySelector('.owl'),motion=matchMedia('(prefers-reduced-motion: reduce)');
+let state='idle',frame=0,paused=false,timer;
+function render(){
+ const [left,top,right,bottom]=frames[state][frame];
+ const pad=4,x=left-pad,y=top-pad,w=right-left+pad*2,h=bottom-top+pad*2;
+ const baseline=state==='hop'?[300,272,250,300][frame]:300;
+ owl.innerHTML=`<svg viewBox="0 0 340 340" aria-hidden="true"><svg x="${(340-w)/2}" y="${baseline-h}" width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}" overflow="hidden"><image href="owl-sprites.png" width="1254" height="1254"/></svg></svg>`;
+}
+function schedule(){
+ clearTimeout(timer);render();if(paused||motion.matches)return;
+ const duration=state==='idle'?[2600,100,130,600][frame]:state==='sleep'?800:state==='hop'?200:225;
+ timer=setTimeout(()=>{frame=(frame+1)%4;schedule()},duration);
+}
+document.querySelectorAll('button[data-state]').forEach(button=>button.addEventListener('click',()=>{state=button.dataset.state;frame=0;owl.dataset.state=state;document.querySelectorAll('button[data-state]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));schedule()}));
+document.querySelector('#pause').addEventListener('click',event=>{paused=!paused;event.currentTarget.setAttribute('aria-pressed',String(paused));event.currentTarget.textContent=paused?'Resume':'Pause';schedule()});
+motion.addEventListener('change',schedule);schedule();
+</script></body></html>

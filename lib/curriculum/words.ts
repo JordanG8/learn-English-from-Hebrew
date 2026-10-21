@@ -32,7 +32,6 @@ const w = (
 export const WORDS: readonly WordData[] = [
   /* Tier 1 — s a t p i n m d ------------------------------------- */
   w("SIT", "לשבת", "🪑", 1),
-  w("PIN", "סיכה", "📌", 1),
   w("ANT", "נמלה", "🐜", 1),
   w("MAP", "מפה", "🗺️", 1),
   w("PAN", "מחבת", "🍳", 1),

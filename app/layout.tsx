@@ -18,15 +18,12 @@ const assistant = Assistant({
 
 export const metadata: Metadata = {
   title: "אנגלית מההתחלה",
-  description: "לומדים את האותיות באנגלית ואת המקלדת — משחק תרגול לכיתות א׳–ו׳",
+  description: "הרפתקאות באנגלית עם ינשוף, גינה ופרסים — מקשיבים, מבינים, קוראים ומשחקים",
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  // Kids rest palms on tablets; pinch-zoom mid-lesson breaks the keyboard layout.
-  maximumScale: 1,
-  userScalable: false,
   themeColor: "#f7f7fb",
 };
 

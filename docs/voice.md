@@ -1,59 +1,116 @@
 # The app's voice
 
-Everything this app says out loud used to come from the browser's built-in
-speech synthesiser. That voice is robotic, it sounds different on every
-device, and it is worst at the one thing this app teaches: a letter *sound*
-("ah", "buh", "ss") is not a word, so a synthesiser has nothing to pronounce
-and guesses.
+Most existing recordings use ElevenLabs v4, voice Sarah, generated through OpenRouter by scripts/generate-voice.ts. The 26 sound-choice questions use Google Gemini TTS voice Kore through Vercel AI Gateway. These are a separate female voice; see the generation and review details below.
 
-So the app now speaks in a recorded human voice wherever one exists, and falls
-back to TTS only for lines nobody has recorded yet. `/studio` is where the
-recording happens — on a phone, in one sitting, by whoever's voice this should
-be.
+The browser's synthesiser is still there, but only as the fallback for a line
+that has no clip. `/studio` still works too: a line re-recorded there replaces
+the generated clip (the newer of the two always wins — see
+`lib/voice/manifest.ts`).
 
-## The short version
+## Regenerating
+
+```bash
+OPENROUTER_API_KEY=… node --experimental-strip-types --no-warnings \
+  --import ./scripts/ts-resolve.mjs scripts/generate-voice.ts \
+  [--only '<id regex>'] [--preview] [--no-qa]
+```
+
+- `--only '^word-CAT$'` regenerates one line; `--only '^soundout-'` a whole
+  group. A scoped run updates its own rows of `index.json` and of
+  `docs/voice-qa.md` and keeps everyone else's.
+- Raw takes are cached in `.voice-cache/` (git-ignored) by everything that
+  determines them, so re-running costs nothing until an input changes.
+- The key is read from the environment and never written anywhere.
+- After a run, commit `public/voice/` and `docs/voice-qa.md`.
+
+## How a line is made, and checked
+
+A synthesiser is very good at words and sentences and surprisingly bad at the
+one thing this app teaches — a letter's sound on its own. Every one of these
+came out of a real test call: "sss" read as **ess ess ess**, "puh" read as
+Finnish, "ks" as Polish, "Rrrr" as a **rolled Spanish R**, "I" as **one**,
+"sun." as **Sunday**, a sentence of Hebrew followed by "r" ending on a
+**Hebrew ר**. So nothing is trusted on the first take:
+
+1. **Ask well.** Each kind of line has its own inputs (`PHONEME_INPUTS`,
+   `PERF`, `NAME_INPUTS`): IPA phoneme tags for vowels, stretched letters for
+   continuants, a clipped schwa for stops, bare lower-case words, and a short
+   delivery tag. Tags only ever describe HOW to sound — a tag that told the
+   voice what to *do* ("…exactly twice") was sometimes read out loud.
+2. **Listen blind.** Every take is transcribed by an audio model that is never
+   told the script (`gemini-4-argon`, falling back to `gemini-3.8-flash`), in
+   batches of one kind of line at a time — mixed batches primed it to hear
+   English as Hebrew. It reports what it heard, in IPA or script, any extra
+   spoken words, and a 1–10 for warmth and naturalness.
+3. **Check what was heard against what was meant**, plus an acoustic floor no
+   listener can override: a hiss must be unvoiced, a vowel voiced, a single
+   sound short.
+4. **Retry** with a new seed, then the next way of asking. A clip that never
+   passes keeps its best take and is flagged ⚠️ in `docs/voice-qa.md`; a
+   sound-out or letter intro that never passes is **not kept at all**, and the
+   app builds the same moment from the separate sound clips instead — a wrong
+   sound-out is worse than none.
+5. **Process every clip the same way:** silence trimmed to the same lead and
+   tail, breath cut from the end of isolated vowels, loudness normalised to
+   −18 LUFS (hisses a little lower, because they are heard as louder), peaks
+   limited, 64 kbps mono MP3.
+
+6. **A second opinion on the performances.** After generation, every kept
+   sound-out and letter intro was reviewed again by two listeners (argon and
+   flash) asking only "would you play this to a child as-is?". Where both
+   said no, the line was regenerated from fresh takes (`--skip N`), and left
+   out if it still failed. That review is what caught intros that said their
+   sound twice and J read as "gay" — both now checked in the generator — and
+   it removed the RED and EGG sound-outs, which the app builds from the
+   separate clips instead (as it does for CLOUD, FRIEND, HAND and JUICE,
+   whose sounds run together too closely to cut apart).
+
+### Sound-outs and letter intros are performances
+
+A word's sound-out — "sss · uh · nnn … sss · uh · nnn … sun!" — and a letter's
+intro — "זאת האות אֶס, הצליל שלה הוא… sss" — are each generated as **one
+take**, not stitched from separate clips. Stitched, every piece arrived with
+its own flat, finished intonation and the result sounded like a list being
+read; as one take it rises and falls like a teacher's voice.
+
+After a take passes, it is cut at its pauses into its sounds, every pause is
+widened to at least 0.6 s between sounds and 1.1 s between passes (never
+shortened), and the position of each sound is written to `index.json` as
+`marks`. The app follows those marks to light each letter, and swap the mouth,
+exactly while its sound plays. If the voice sounded the word out three times
+instead of two, the last two passes are kept. If the pauses do not split
+cleanly into the expected sounds, the take is rejected rather than guessed at.
+
+## What gets said
+
+`lib/voice/lines.ts` is the closed list, derived from the curriculum and from
+`lib/phonics.ts`, so adding a letter or a word adds its lines automatically.
+
+| Group | Lines | What it is |
+|---|---|---|
+| ההדרכה | 3 | The first-visit walkthrough cards, in Hebrew. |
+| פתיחת האותיות | 26 | "זאת האות …, הצליל שלה הוא…" and the sound — one take each. |
+| שמות האותיות | 26 | The letter *names* — "A", "B"… |
+| צלילים | 44 | One clip per SOUND, not per letter: C and K share /k/, and the A in CAT is the same clip as the letter A. Includes the digraphs and long vowels words need (sh, ee, oo, ar…). |
+| מפרקים מילה | 84 | Every word a child builds, sounded out twice and said — one take each, with time marks. |
+| מילים | 91 | Every word the child builds or hears, plus the per-letter example words. |
+| משפטים | 50 | The sentences of levels 76–100. |
+| כרטיסי שיעור | 13 | The Hebrew cards inside lessons. |
+
+## Re-recording a line by hand
+
+`/studio` is still the way to replace any single line with a real voice:
 
 1. Open `/studio` on your phone (the deployed URL, or your laptop's dev server
    over the local network).
 2. Type the passcode once, if one is configured.
 3. For each line: read it, tap **הקלט**, say it, tap **עצור**. It saves itself
    and jumps to the next line.
-4. The app uses it immediately — no deploy, no build.
-5. When you are happy with the whole set, tap **ייצוא**, unzip into `public/`,
-   and commit. Now the voice ships with the code.
+4. The app uses it immediately — no deploy, no build — because it is newer
+   than the generated clip.
 
-## What gets recorded
-
-`lib/voice/lines.ts` is the closed list, derived from the curriculum rather
-than hand-written, so adding a letter or a word adds its line automatically.
-
-| Group | Lines | What it is |
-|---|---|---|
-| ההדרכה | 3 | The first-visit walkthrough cards, in Hebrew. |
-| שמות האותיות | 26 | The letter *names* — "A", "B"… |
-| צלילי האותיות | 26 | The letter *sounds* — "ah", "buh"… |
-| מילים | ~91 | Every word the child builds or hears, plus the per-letter example words. |
-| משפטים | 50 | The sentences of levels 76–100. **None of these are recorded.** |
-| כרטיסי שיעור (רשות) | ~62 | The Hebrew explanation cards inside lessons. These were never spoken before, so recording them is an upgrade, not a requirement. |
-
-The headline progress bar counts only the non-optional groups: finishing the
-lines the app actually speaks should read as finished.
-
-**The sentence group is deliberately in the required set, and deliberately
-empty.** The sentence phase shipped without waiting for a voice: every
-sentence line has a TTS fallback, so a child on level 76 hears the browser
-read "I SEE A CAT" today, and hears a person read it the day somebody records
-it — no code change, no deploy. Counting the group as required is the honest
-accounting: the app speaks these lines, nobody has recorded them, and the
-progress bar should say so rather than reporting 100% while a synthesiser
-reads sentences to a seven-year-old. Sentences are also where a recording is
-worth the most — prosody is most of what makes a sentence comprehensible, and
-it is the one thing TTS cannot fake at this reading level. If you record
-anything next, record these.
-
-**Hebrew lines have no TTS fallback, deliberately.** A robotic Hebrew voice
-reading to a seven-year-old is worse than the silence the app shipped with,
-and every card carries its text on screen regardless (design rule 3).
+A recorded sound-out or letter intro carries no time marks, so for those the
+app plays the separate sound clips with the highlighting instead.
 
 ## Where recordings are stored
 
@@ -300,6 +357,8 @@ that screen has a one-action budget.
 ## How it fits together
 
 ```
+scripts/generate-voice.ts  makes and checks every clip (see "Regenerating")
+lib/phonics.ts          sounds, mouths, and every word's sound-by-sound spelling
 lib/voice/lines.ts      the closed catalogue, derived from the curriculum
 lib/voice/manifest.ts   client: which lines are recorded, and their URLs
 lib/voice/store.ts      server: blob or filesystem, one API (+ the synth cache)
@@ -309,7 +368,7 @@ lib/voice/gateway.ts    server: the AI Gateway credential and headers, once
 lib/voice/synth.ts      server: speaking  — text  -> mp3  (openai/tts-1-hd)
 lib/voice/listen.ts     server: listening — audio -> text (fish-audio/transcribe-1)
 lib/voice/pronounce.ts  pure: is what we heard the word we asked for?
-lib/audio.ts            playLine() — recording, then speech model, then TTS
+lib/audio.ts            WebAudio playback and sequences; recording, speech model, then TTS
 app/api/voice/*         manifest / clip / export / synth (GET) / check (POST)
 app/studio              the recording desk
 app/speak               pronunciation practice
@@ -344,3 +403,35 @@ a sentence the id is derived from the words themselves
 (`"I SEE A CAT"` → `sentence-i-see-a-cat`), so **editing the wording of a
 sentence orphans its recording too**. Adding a sentence is free; rewording one
 that has been recorded is not.
+
+### A introduction correction (2026-10-21)
+
+The combined A take pronounced the letter name as ah. Its replacement,
+`narration-intro-A-corrected.mp3`, retains the Hebrew carrier (0–0.85 s and
+1.3–3.39 s), inserts the standalone `letter-name-A` /eɪ/ clip, and ends with
+the same `phoneme-a` /æ/ clip used by the keyboard. The versioned URL and
+new manifest timestamp replace the old take in browser caches and the store
+merge. The earlier automated QA for the combined take missed the name error;
+its pass should not be treated as listening verification of this replacement.
+
+### Sound-choice questions (2026-10-21)
+
+Only the question “איזה צליל עושה האות …?” is narrated automatically for each
+letter. The question uses the letter name, never its answer sound. Tap the
+question to replay it. Choosing a sound or leaving the step cancels narration.
+The smaller listening instructions are not narrated.
+
+Generate with AI_GATEWAY_API_KEY in the process environment:
+
+```sh
+node --experimental-strip-types --no-warnings --import ./scripts/ts-resolve.mjs scripts/generate-sound-questions.ts
+```
+
+Requires ffmpeg and ffprobe. The script uses google/gemini-3.8-flash-tts,
+voice Kore, and a separate blind audio review with google/gemini-3.8-flash.
+Only takes with the full question, correct letter name, no answer or extra
+instructions, naturalness at least 7/10, and duration 1–8 seconds are published.
+The automated review results are in sound-question-qa.json; these are model
+judgments, not a human listening sign-off. Raw takes are cached outside Git.
+Commit the 26 MP3 files, manifest, and review report. Playback uses static
+recordings and needs no AI Gateway credential in the browser or deployment.

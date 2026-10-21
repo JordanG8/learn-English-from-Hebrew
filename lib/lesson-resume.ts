@@ -25,7 +25,8 @@
 
 import type { Lang, Step } from "./types";
 
-const KEY = "efh:lesson-resume";
+// Curriculum v2 adds prerequisite introductions and matching; older question lists must restart.
+const KEY = "efh:lesson-resume:v2";
 
 /**
  * Bookmarks older than this are dropped. A half-finished lesson is a thing
@@ -89,6 +90,15 @@ function coerceStep(raw: unknown): Step | null {
       ) {
         return null;
       }
+      return raw as unknown as Step;
+    case "letter-intro":
+      if (!str(raw.letter) || !/^[A-Z]$/.test(raw.letter)) return null;
+      return raw as unknown as Step;
+    case "word-intro":
+      if (!str(raw.word) || !str(raw.he) || !str(raw.emoji)) return null;
+      return raw as unknown as Step;
+    case "letter-match":
+      if (!strArray(raw.letters) || ![2,3].includes(raw.letters.length) || new Set(raw.letters).size !== raw.letters.length || !raw.letters.every(l => /^[A-Z]$/.test(l))) return null;
       return raw as unknown as Step;
     case "press-key":
       if (!str(raw.code)) return null;

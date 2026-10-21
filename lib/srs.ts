@@ -188,8 +188,8 @@ export function isMastered(s: SkillState, now: number = Date.now()): boolean {
     if (span < MASTERY_RETENTION_DAYS * DAY_MS) return false;
   }
 
-  // (6) automaticity, when we have timing for it.
-  if (s.latencyMs !== undefined && s.latencyMs > latencyCeiling(s.id)) return false;
+  // Historical timings included narration, listening and whole-word entry.
+  // They cannot fairly block English mastery. Accuracy and delayed recall do.
 
   return true;
 }
@@ -211,15 +211,12 @@ export function masteryFraction(s: SkillState, now: number = Date.now()): number
           (Math.max(s.lastSeen, now) - s.firstCorrectAt) /
             (MASTERY_RETENTION_DAYS * DAY_MS),
         );
-  const latency =
-    s.latencyMs === undefined ? 1 : Math.min(1, latencyCeiling(s.id) / s.latencyMs);
   const q = [
     Math.min(1, s.reps / MASTERY_MIN_REPS),
     Math.min(1, s.accuracy / MASTERY_MIN_ACCURACY),
     Math.min(1, s.streak / MASTERY_MIN_STREAK),
     Math.min(1, s.daysCorrect / MASTERY_MIN_DISTINCT_DAYS),
     retention,
-    latency,
   ];
   return q.reduce((a, b) => a + b, 0) / q.length;
 }

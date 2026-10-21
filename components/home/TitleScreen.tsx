@@ -21,6 +21,7 @@ import { useRouter } from "next/navigation";
 import { useProgress } from "@/lib/progress-context";
 import { useSound } from "@/lib/sound-pref";
 import { primeAudio, playSfx } from "@/lib/audio";
+// Owl rewards paused: import Link from "next/link";
 
 export function TitleScreen() {
   const router = useRouter();
@@ -60,7 +61,7 @@ export function TitleScreen() {
           A
         </div>
         <h1 className="text-center text-4xl font-black leading-tight">אנגלית מההתחלה</h1>
-        <p className="text-center text-xl text-ink-soft">אותיות, מקלדת, ודיבור</p>
+        <p className="text-center text-xl text-ink-soft">אותיות, צלילים ומילים באנגלית</p>
       </div>
 
       {/* The bottom third: one action, thumb-height, impossible to miss. */}
@@ -75,6 +76,7 @@ export function TitleScreen() {
           </span>
           <span>{started ? "ממשיכים" : "מתחילים"}</span>
         </button>
+        {/* Owl rewards paused for now. <Link href="/garden" className="min-h-12 rounded-2xl border-2 border-brand-soft bg-card px-5 py-3 text-lg font-bold">🦉 הינשוף והפרסים שלי</Link> */}
         <p className="text-center text-sm text-ink-soft">
           <span className="ltr">Jordan Goren</span> · <span className="ltr">Claude</span>
         </p>

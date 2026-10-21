@@ -24,16 +24,29 @@
  *    recording is incomplete.
  */
 
-import { LETTERS } from "@/lib/curriculum/alphabet";
+import { LETTERS, letterIntroText } from "@/lib/curriculum/alphabet";
+import {
+  LETTER_PHONEME,
+  PHONEMES,
+  PHONEME_IDS,
+  letterPhoneme,
+  segmentsFor,
+  type PhonemeId,
+} from "@/lib/phonics";
 import { WORDS } from "@/lib/curriculum/words";
 import { SENTENCES } from "@/lib/curriculum/sentences";
 import { LESSONS, TUTORIAL_LESSON } from "@/lib/curriculum/lessons";
 import type { TutorialStep } from "@/lib/types";
+import { MISSIONS } from "@/lib/garden/curriculum";
+import { COURSE_GUIDES } from "./course-guides";
 
 export type VoiceGroupId =
+  | "garden"
   | "narration"
+  | "letter-intro"
   | "letter-name"
-  | "letter-sound"
+  | "phoneme"
+  | "soundout"
   | "word"
   | "sentence"
   | "lesson-card";
@@ -75,8 +88,34 @@ export interface VoiceGroup {
 export const letterNameLineId = (letter: string): string =>
   `letter-name-${letter.toUpperCase()}`;
 
+/**
+ * One recording per SOUND, not per letter: C and K both play /k/, and the A in
+ * CAT plays the very same clip the letter A lesson does. A letter's sound is
+ * just the phoneme it teaches — see LETTER_PHONEME in lib/phonics.ts.
+ */
+export const phonemeLineId = (ph: PhonemeId): string => `phoneme-${ph}`;
+
 export const letterSoundLineId = (letter: string): string =>
-  `letter-sound-${letter.toUpperCase()}`;
+  phonemeLineId(LETTER_PHONEME[letter.toUpperCase()] ?? "a");
+
+/** The short Hebrew introduction a letter lesson opens with — sound included. */
+export const letterIntroLineId = (letter: string): string =>
+  `narration-intro-${letter.toUpperCase()}`;
+
+export const soundQuestionLineId = (letter: string): string =>
+  `narration-sound-question-${letter.toUpperCase()}`;
+
+/**
+ * A word sounded out in ONE breath of one voice — "sss · uh · nnn, sss · uh ·
+ * nnn, sun!" — rather than stitched from separate clips. Stitched, every
+ * sound arrived with its own flat, finished intonation and the whole thing
+ * sounded like a machine reading a list; performed, it rises and falls the way
+ * a teacher's voice does. The clip carries time marks for each sound (see
+ * VoiceClip.marks) so the letters still light up in step with it.
+ */
+export const soundoutLineId = (word: string): string =>
+  `soundout-${word.toUpperCase().replace(/[^A-Z]/g, "")}`;
+
 
 export const wordLineId = (word: string): string =>
   `word-${word.toUpperCase().replace(/[^A-Z0-9]/g, "")}`;
@@ -157,16 +196,61 @@ function letterNameLines(): VoiceLine[] {
   }));
 }
 
-function letterSoundLines(): VoiceLine[] {
+function phonemeLines(): VoiceLine[] {
+  const lettersFor = (ph: PhonemeId) =>
+    Object.entries(LETTER_PHONEME)
+      .filter(([, p]) => p === ph)
+      .map(([l]) => l);
+  return PHONEME_IDS.map((ph, i) => {
+    const d = PHONEMES[ph];
+    const letters = lettersFor(ph);
+    return {
+      id: phonemeLineId(ph),
+      group: "phoneme" as const,
+      lang: "en" as const,
+      text: `/${d.ipa}/ — ${d.as}`,
+      directionHe: `הצליל /${d.ipa}/ כמו ב־${d.as}${
+        letters.length ? ` (האות ${letters.join(", ")})` : ""
+      }. רק הצליל — קצר, בלי «ּה» בסוף.`,
+      fallback: { text: d.as, rate: 0.6 },
+      order: i,
+    };
+  });
+}
+
+function letterIntroLines(): VoiceLine[] {
   return LETTERS.map((d, i) => ({
-    id: letterSoundLineId(d.letter),
-    group: "letter-sound" as const,
-    lang: "en" as const,
-    text: d.soundSpeak,
-    directionHe: `הצליל של האות — «${d.soundHe}» ${d.ipa}. קצר, בלי «ּה» בסוף.`,
-    fallback: { text: d.soundSpeak, rate: 0.6 },
+    id: letterIntroLineId(d.letter),
+    group: "letter-intro" as const,
+    lang: "he" as const,
+    text: `${letterIntroText(d.nameHe)} /${PHONEMES[letterPhoneme(d.letter) ?? "a"].ipa}/`,
+    directionHe:
+      "פתיחת שיעור האות — בעברית, חם ומזמין, ובסוף הצליל עצמו באנגלית, אחרי הפסקה קטנה.",
+    fallback: null,
     order: i,
   }));
+}
+
+function soundoutLines(): VoiceLine[] {
+  // Every word a child BUILDS is introduced by its sound-out first.
+  const words = [...new Set(WORDS.map((w) => w.word.toUpperCase()))].sort();
+  return words.map((word, i) => {
+    const pass = segmentsFor(word)
+      .filter((seg) => seg.ph)
+      .map((seg) => seg.letters.toLowerCase())
+      .join(" · ");
+    return {
+      id: soundoutLineId(word),
+      group: "soundout" as const,
+      lang: "en" as const,
+      text: `${pass} … ${pass} … ${word.toLowerCase()}!`,
+      directionHe: `לפרק את ${word} לצלילים — לאט, בחום, כמו מורה: פעמיים, ואז המילה כולה.`,
+      // No synthesiser can perform this; without a recording the app plays
+      // the separate sound clips in order instead.
+      fallback: null,
+      order: i,
+    };
+  });
 }
 
 function wordLines(): VoiceLine[] {
@@ -215,10 +299,31 @@ function sentenceLines(): VoiceLine[] {
 
 export const VOICE_GROUPS: readonly VoiceGroup[] = [
   {
+    id: "garden", titleHe: "הגינה של הינשוף", blurbHe: "הוראות בעברית לשלוש ההרפתקאות הראשונות.",
+    lines: [...MISSIONS.flatMap(m => m.steps).map((step, order) => ({ id: `garden-${step.id}`, group: "garden" as const, lang: "he" as const, text: step.instruction, directionHe: "קראו רק את ההוראה, בנחת ובבהירות.", fallback: null, order })), ...COURSE_GUIDES.map((guide,order) => ({id:guide.id,group:"garden" as const,lang:"he" as const,text:guide.text,directionHe:"קראו בנחת ובבהירות.",fallback:null,order:100+order}))],
+  },
+  {
     id: "narration",
     titleHe: "ההדרכה",
     blurbHe: "מה שהילד שומע בפעם הראשונה שהוא נכנס. בעברית.",
     lines: tutorialLines("walkthrough"),
+  },
+  {
+    id: "letter-intro",
+    titleHe: "פתיחת האותיות",
+    blurbHe: "«זאת האות איי, הצליל שלה הוא…» — ואז הצליל עצמו.",
+    lines: [
+      ...letterIntroLines(),
+      ...LETTERS.map((d, i): VoiceLine => ({
+        id: soundQuestionLineId(d.letter),
+        group: "letter-intro",
+        lang: "he",
+        text: `איזה צליל עושה האות ${d.nameHe}?`,
+        directionHe: "קראו רק את השאלה, עם שם האות. בלי הצליל שלה ובלי ההוראות שמתחת לשאלה.",
+        fallback: null,
+        order: LETTERS.length + i,
+      })),
+    ],
   },
   {
     id: "letter-name",
@@ -227,10 +332,17 @@ export const VOICE_GROUPS: readonly VoiceGroup[] = [
     lines: letterNameLines(),
   },
   {
-    id: "letter-sound",
-    titleHe: "צלילי האותיות",
-    blurbHe: "אַ, בְּ, קְ… — הצליל שהאות עושה. זה מה ש‑TTS הכי מקלקל.",
-    lines: letterSoundLines(),
+    id: "phoneme",
+    titleHe: "צלילים",
+    blurbHe:
+      "סְ, אַ, טְ… — הצליל של כל אות, וגם צלילים של צירופים (sh, ee, oo). מהם בנויה כל מילה כשמפרקים אותה.",
+    lines: phonemeLines(),
+  },
+  {
+    id: "soundout",
+    titleHe: "מפרקים מילה",
+    blurbHe: "«ססס · אָ · ננן… שמש!» — כל מילה חדשה, מפורקת לצלילים בנשימה אחת.",
+    lines: soundoutLines(),
   },
   {
     id: "word",
