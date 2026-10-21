@@ -19,5 +19,5 @@ export default function MatchingPage() {
     if(!correct){setAssisted(true);return;}
     step.letters.forEach(letter=>{attempt(`letter-name:${letter}`,{correct:true,hinted:assisted});attempt(`letter-sound:${letter}`,{correct:true,hinted:assisted});});
     garden.update(p=>awardCourseAnswer(importCourseStars(p,progress.stars),"matching",`triple-${[...step.letters].sort().join("")}`));
-  }} onAdvance={()=>{setRound(r=>r+1);setAssisted(false);}}/> : <section className="mx-auto max-w-xl rounded-3xl bg-white p-8 text-center"><p className="mb-6 text-2xl">נכיר קודם שלוש אותיות במסלול. אחר כך נחבר רק אותיות שכבר למדנו.</p><Link className="inline-block rounded-2xl bg-brand p-4 text-xl text-white" href="/map">ממשיכים ללמוד ←</Link></section>}</main>;
+  }} onAdvance={()=>{setRound(r=>r+1);setAssisted(false);}}/> : <section className="mx-auto max-w-xl rounded-3xl bg-white p-8 text-center"><p className="mb-6 text-2xl">נכיר קודם שתי אותיות במסלול. אחר כך נחבר רק אותיות שכבר למדנו.</p><Link className="inline-block rounded-2xl bg-brand p-4 text-xl text-white" href="/map">ממשיכים ללמוד ←</Link></section>}</main>;
 }

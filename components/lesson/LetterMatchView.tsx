@@ -19,8 +19,10 @@ export function LetterMatchView({ step, onAnswer, onAdvance, locked }: { step: L
   const drag = useRef<{node: Node; x:number; y:number; moved:boolean} | null>(null);
   const suppressClick = useRef(false);
   const solved = useRef(false);
-  const columns = [step.letters, [step.letters[1],step.letters[2],step.letters[0]], [step.letters[2],step.letters[0],step.letters[1]]];
-  const point = (n: Node) => ({ x: 110+n.column*340, y: 92+columns[n.column].indexOf(n.letter)*112 });
+  const count = step.letters.length;
+  const totalLinks = count * 2;
+  const columns = [step.letters, [...step.letters.slice(1),step.letters[0]], [...step.letters.slice(-1),...step.letters.slice(0,-1)]];
+  const point = (n: Node) => ({ x: 110+n.column*340, y: (count === 2 ? 120 : 92)+columns[n.column].indexOf(n.letter)*(count === 2 ? 156 : 112) });
   const speak = (n: Node) => { if (n.column > 0) void speakLine(n.column === 1 ? letterNameLineId(n.letter) : letterSoundLineId(n.letter)); };
   const connect = (a: Node, b: Node) => {
     if (locked || solved.current) return;
@@ -33,8 +35,8 @@ export function LetterMatchView({ step, onAnswer, onAdvance, locked }: { step: L
     const id = `${Math.min(a.column,b.column)}:${a.letter}`;
     const next = links.includes(id) ? links : [...links,id];
     setLinks(next); setSelected(null); setExample(false);
-    if (next.length === 6) { solved.current=true; setMessage("כל שלוש האותיות מחוברות לשמות ולצלילים שלהן!"); onAnswer(true); playSfx("correct"); }
-    else { setMessage(`חיבור נכון! ${next.length} מתוך 6 חיבורים.`); playSfx("tap"); }
+    if (next.length === totalLinks) { solved.current=true; setMessage("כל האותיות מחוברות לשמות ולצלילים שלהן!"); onAnswer(true); playSfx("correct"); }
+    else { setMessage(`חיבור נכון! ${next.length} מתוך ${totalLinks} חיבורים.`); playSfx("tap"); }
   };
   const choose = (node: Node) => {
     if (suppressClick.current) { suppressClick.current=false; return; }

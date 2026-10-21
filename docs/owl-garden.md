@@ -11,14 +11,14 @@ Garden gift thresholds are 3, 10, 20, 35, 55 and 80; no stars are deducted. Exis
 pilot gifts survive the new thresholds. No streak penalties or speed rewards.
 Garden storage is browser-local and separate from the unchanged course profile.
 
-The first matching exercise follows S/A/T instruction, and another appears at
+The first matching exercise follows S/A instruction, and another appears at
 every third introduced letter. Mixed reviews substitute matching for three
-repetitive questions when at least three letters are introduced. /matching is
-also available from the map after three completed letter lessons. Each board
-has exactly three different taught letters and three distinct phonemes (never
+repetitive questions when at least two letters are introduced. /matching is
+also available from the map after two completed letter lessons. Each board
+has two different taught letters initially, increasing to three after six letters are introduced, with distinct phonemes (never
 C and K together). Columns are symbol, spoken/written name, spoken sound.
 Dragging and tapping two endpoints are supported. Correct lines remain after
-mistakes; examples are visibly dashed. Completion requires all six links.
+mistakes; examples are visibly dashed. Completion requires all four links initially (six in later rounds).
 
 Early mixed-review fallback only uses introduced letters. Every word build is
 preceded by its word introduction and all its letter introductions. Newly used
@@ -34,7 +34,7 @@ unlock remains available).
 
 QA:
 - scripts/test-combined-course.ts audits every static word/sentence build,
-  all eight matching boards, early review prerequisites, ambiguity rejection,
+  all nine matching boards, early review prerequisites, ambiguity rejection,
   course reward deduplication and preserved legacy progress.
 - scripts/test-garden.ts covers storage validation, pilot compatibility, reward
   limits, gift placement and retained helper functions.

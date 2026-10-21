@@ -475,7 +475,7 @@ function letterLesson(
   }
   // The first linking exercise follows S, A, T, after all three introductions.
   // Later groups practise already introduced letters rather than new symbols.
-  if (taught.length >= 3 && taught.length % 3 === 0) {
+  if (taught.length === 2 || (taught.length >= 3 && taught.length % 3 === 0)) {
     const match = matchingStep([...taught].reverse(), `match-${d.letter}`);
     if (match) steps.push(match);
   }
@@ -1052,7 +1052,7 @@ export function buildReviewLesson(
     });
   }
   const match = matchingStep(taught, `match-${id}`, charSeed(id) % Math.max(1,taught.length));
-  if (match) steps.splice(0, Math.min(3,steps.length), match);
+  if (match) steps.splice(0, Math.min(match.letters.length,steps.length), match);
 
   return {
     id,

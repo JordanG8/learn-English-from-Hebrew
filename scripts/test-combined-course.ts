@@ -11,7 +11,7 @@ for(const lesson of LESSONS)for(const step of lesson.steps){
   if(step.type==="letter-intro")taught.add(step.letter);
   if(step.type==="word-intro")words.add(step.word);
   if(step.type==="letter-match"){
-    matches++;assert.equal(step.letters.length,3);assert.equal(new Set(step.letters.map(letterPhoneme)).size,3);
+    matches++;assert.equal(step.letters.length,taught.size >= 6 ? 3 : 2);assert.equal(new Set(step.letters.map(letterPhoneme)).size,step.letters.length);
     for(const l of step.letters)assert.ok(taught.has(l),`matching ${l} before introduction`);
   }
   if(step.type==="build-word"){
@@ -23,8 +23,11 @@ for(const lesson of LESSONS)for(const step of lesson.steps){
   }
 }
 assert.ok(matches>=8);assert.ok(sentences>0 && builds>0);
-assert.equal(matchingStep(["S","A"],"test"),null);
-assert.equal(matchingStep(["C","K","A"],"test"),null,"same sounds can't be two answers");
+assert.equal(matchingStep(["S"],"test"),null);
+assert.equal(matchingStep(["S","A"],"test")!.letters.length,2);
+assert.equal(matchingStep(["S","A","T","P","I"],"test")!.letters.length,2);
+assert.equal(matchingStep(["S","A","T","P","I","N"],"test")!.letters.length,3);
+assert.equal(matchingStep(["C","K"],"test"),null,"same sounds can't be two answers");
 const triple=matchingStep(["S","A","T"],"test")!;
 for(const letter of triple.letters){assert.ok(canConnect({column:0,letter},{column:1,letter}));assert.ok(canConnect({column:1,letter},{column:2,letter}));}
 assert.equal(canConnect({column:0,letter:"S"},{column:1,letter:"A"}),false);
@@ -32,7 +35,7 @@ assert.equal(canConnect({column:0,letter:"S"},{column:2,letter:"S"}),false);
 const fresh=freshProgress();assert.deepEqual(introducedLetters(fresh),[]);
 const early=buildReviewLesson([],"review-1",["S","A"]);
 for(const s of early.steps)if("letter" in s)assert.ok(["S","A"].includes(s.letter));
-assert.ok(!early.steps.some(s=>s.type==="letter-match"));
+assert.ok(early.steps.some(s=>s.type==="letter-match" && s.letters.length===2));
 const later=buildReviewLesson([],"review-2",["S","A","T"]);assert.ok(later.steps.some(s=>s.type==="letter-match"));
 let garden=importCourseStars(freshGarden(),{"letter-S":3});assert.equal(garden.earned.length,3);
 garden=importCourseStars(garden,{"letter-S":3});assert.equal(garden.earned.length,3);

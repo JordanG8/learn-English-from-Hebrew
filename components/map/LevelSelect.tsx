@@ -347,7 +347,7 @@ export function LevelSelect() {
           </button>
 
           <div className="flex items-center gap-2">
-            <button type="button" disabled={held || introducedLetters(progress).length < 3} onClick={() => router.push("/matching")} aria-label="חיבור אות שם וצליל — אחרי שלוש אותיות" className="grid h-14 w-14 place-items-center rounded-2xl border-[3px] border-white/70 bg-card/90 text-2xl shadow disabled:opacity-50">🔗</button>
+            <button type="button" disabled={held || introducedLetters(progress).length < 2} onClick={() => router.push("/matching")} aria-label="חיבור אות שם וצליל — אחרי שתי אותיות" className="grid h-14 w-14 place-items-center rounded-2xl border-[3px] border-white/70 bg-card/90 text-2xl shadow disabled:opacity-50">🔗</button>
             <button type="button" disabled={held} onClick={() => router.push("/garden")} aria-label="הינשוף והפרסים שלי" className="grid h-14 w-14 place-items-center rounded-2xl border-[3px] border-white/70 bg-card/90 text-2xl shadow">🦉</button>
             <button
               type="button"
